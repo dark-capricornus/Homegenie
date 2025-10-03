@@ -1,0 +1,14 @@
+# Simple Web App Dockerfile - serves pre-built Flutter web app
+FROM nginx:alpine
+
+# Copy pre-built web app (you'll build this locally)
+COPY ../../frontend/build/web /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Expose port
+EXPOSE 3000
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

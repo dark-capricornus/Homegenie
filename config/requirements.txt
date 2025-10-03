@@ -1,0 +1,26 @@
+# HomeGenie - Smart Home Automation System
+# Dependencies for a complete home automation solution
+
+# Core FastAPI Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.4.0
+python-multipart>=0.0.6
+
+# MQTT Communication
+aiomqtt>=2.0.0
+paho-mqtt>=1.6.0
+
+# Async and File Operations  
+aiofiles>=23.0.0
+httpx>=0.25.0
+
+# Voice Recognition (commented out for Docker compatibility)
+# speechrecognition>=3.10.0
+
+# Development and Testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-httpx>=0.24.0
+black>=23.0.0
+flake8>=6.0.0

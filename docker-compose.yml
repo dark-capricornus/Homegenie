@@ -1,0 +1,106 @@
+services:
+  # 🔹 MQTT Broker (Mosquitto with anonymous access for development)
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: homegenie-mqtt
+    ports:
+      - "1883:1883"
+      - "9003:9001"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./docker/mosquitto/data:/mosquitto/data
+      - ./docker/mosquitto/log:/mosquitto/log
+    networks:
+      - homegenie-net
+    restart: unless-stopped
+
+  # 🔹 Redis (ContextStore + cache)
+  redis:
+    image: redis:7
+    container_name: homegenie-redis
+    ports:
+      - "6380:6379"  # mapped to avoid conflict with local redis
+    volumes:
+      - redis-data:/data
+    networks:
+      - homegenie-net
+    restart: unless-stopped
+
+  # 🔹 PostgreSQL (User prefs, history)
+  postgres:
+    image: postgres:15
+    container_name: homegenie-postgres
+    ports:
+      - "5433:5432"  # mapped to avoid conflict with local postgres
+    environment:
+      - POSTGRES_USER=homegenie
+      - POSTGRES_PASSWORD=strongpassword
+      - POSTGRES_DB=homegenie
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - homegenie-net
+    restart: unless-stopped
+
+  # 🔹 Device Simulator
+  device-simulator:
+    build:
+      context: .
+      dockerfile: docker/simulators/Dockerfile
+    container_name: homegenie-simulator
+    depends_on:
+      - mqtt-broker
+    environment:
+      - MQTT_BROKER_HOST=mqtt-broker
+      - MQTT_BROKER_PORT=1883
+      - SIMULATOR_DEVICES=light,thermostat,lock,media,sensor
+    networks:
+      - homegenie-net
+    restart: unless-stopped
+    volumes:
+      - ./docker/simulators/devices.json:/app/config/devices.json
+
+  # 🔹 API + Agents Backend (FastAPI + Agents)
+  api-backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: homegenie-api
+    ports:
+      - "8080:8000"  # expose API
+    environment:
+      - MQTT_BROKER_HOST=mqtt-broker
+      - MQTT_BROKER_PORT=1883
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://homegenie:strongpassword@postgres:5432/homegenie
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    depends_on:
+      - mqtt-broker
+      - redis
+      - postgres
+    networks:
+      - homegenie-net
+    restart: unless-stopped
+
+  # 🔹 Flutter Web App (Frontend)
+  web-app:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    container_name: homegenie-webapp
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-backend
+    networks:
+      - homegenie-net
+    restart: unless-stopped
+
+networks:
+  homegenie-net:
+    driver: bridge
+
+volumes:
+  redis-data:
+  pgdata:

@@ -1,0 +1,437 @@
+INFO:src.simulators.device_simulator:DeviceSimulator initialized - Broker: localhost:1883
+🤖 Starting Device Simulator...
+📡 MQTT Broker: localhost:1883
+🛑 Press Ctrl+C to stop
+
+🚀 Starting DeviceSimulator...
+   📡 MQTT Broker: localhost:1883
+   🎯 Listening for commands on: home/+/+/set
+   📊 Publishing states to: home/+/+/state
+   🤖 Client ID: device_simulator_20251003_122718
+
+📊 Sensor Update: home/living_room/temperature/state -> 22.1
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 565
+✅ Subscribed to device commands
+💡 Ready to simulate devices! Send commands to test...
+------------------------------------------------------------
+📊 Sensor Update: home/living_room/temperature/state -> 20.5
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 420
+📊 Sensor Update: home/living_room/temperature/state -> 21.1
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 549
+📊 Sensor Update: home/living_room/temperature/state -> 22.2
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 318
+📊 Sensor Update: home/living_room/temperature/state -> 21.7
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 408
+📊 Sensor Update: home/living_room/temperature/state -> 20.3
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 151
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/lock/front_door/set
+   📦 Payload: {"action": "lock", "timestamp": "2025-10-03T12:30:14.633661", "source": "executor_agent", "value": true, "scheduled_at": "2025-10-03T12:30:14.633613", "priority": 1, "estimated_duration": 0.8}
+   🎯 Device: lock.front_door
+   ⚡ Action: lock
+   📊 Value: True
+   ✅ State Published:
+   📍 Topic: home/lock/front_door/state
+   📦 New State: {
+      "locked": true,
+      "battery": 75.61767943610434,
+      "timestamp": "2025-10-03T12:30:15.442082",
+      "device_type": "lock",
+      "location": "front_door",
+      "online": true,
+      "last_access": "2025-10-03T12:30:15.442073"
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/light/bedroom/set
+   📦 Payload: {"action": "set_brightness", "timestamp": "2025-10-03T12:30:14.636667", "source": "executor_agent", "value": 10, "scheduled_at": "2025-10-03T12:30:14.633585", "priority": 2, "estimated_duration": 0.5}
+   🎯 Device: light.bedroom
+   ⚡ Action: set_brightness
+   📊 Value: 10
+   ✅ State Published:
+   📍 Topic: home/light/bedroom/state
+   📦 New State: {
+      "state": "on",
+      "brightness": 10,
+      "color": "white",
+      "timestamp": "2025-10-03T12:30:15.952037",
+      "device_type": "light",
+      "location": "bedroom",
+      "online": true,
+      "power_consumption": 8.0
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/light/living_room/set
+   📦 Payload: {"action": "turn_off", "timestamp": "2025-10-03T12:30:14.638928", "source": "executor_agent", "value": false, "scheduled_at": "2025-10-03T12:30:14.633598", "priority": 2, "estimated_duration": 0.5}
+   🎯 Device: light.living_room
+   ⚡ Action: turn_off
+   📊 Value: False
+   ✅ State Published:
+   📍 Topic: home/light/living_room/state
+   📦 New State: {
+      "state": "off",
+      "brightness": 0,
+      "color": "white",
+      "timestamp": "2025-10-03T12:30:16.455206",
+      "device_type": "light",
+      "location": "living_room",
+      "online": true,
+      "power_consumption": 0.0
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/thermostat/main/set
+   📦 Payload: {"action": "set_temperature", "timestamp": "2025-10-03T12:30:14.642001", "source": "executor_agent", "value": 20.0, "scheduled_at": "2025-10-03T12:30:14.633607", "priority": 3, "estimated_duration": 1.0}
+   🎯 Device: thermostat.main
+   ⚡ Action: set_temperature
+   📊 Value: 20.0
+   ✅ State Published:
+   📍 Topic: home/thermostat/main/state
+   📦 New State: {
+      "temperature": 23.7,
+      "target": 20.0,
+      "mode": "auto",
+      "timestamp": "2025-10-03T12:30:17.457277",
+      "device_type": "thermostat",
+      "location": "main",
+      "online": true,
+      "humidity": 42
+}
+
+📊 Sensor Update: home/living_room/temperature/state -> 24.2
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 991
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/light/living_room/set
+   📦 Payload: {"action": "turn_on", "timestamp": "2025-10-03T12:30:46.487358", "source": "executor_agent", "value": true, "scheduled_at": "2025-10-03T12:30:46.487298", "priority": 2, "estimated_duration": 0.5}
+   🎯 Device: light.living_room
+   ⚡ Action: turn_on
+   📊 Value: True
+   ✅ State Published:
+   📍 Topic: home/light/living_room/state
+   📦 New State: {
+      "state": "on",
+      "brightness": 50,
+      "color": "white",
+      "timestamp": "2025-10-03T12:30:46.992716",
+      "device_type": "light",
+      "location": "living_room",
+      "online": true,
+      "power_consumption": 40.0
+}
+
+📊 Sensor Update: home/living_room/temperature/state -> 21.5
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 833
+📊 Sensor Update: home/living_room/temperature/state -> 21.9
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 660
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/light/living_room/set
+   📦 Payload: {"action": "set_brightness", "timestamp": "2025-10-03T12:31:18.503565", "source": "executor_agent", "value": 20, "scheduled_at": "2025-10-03T12:31:18.503481", "priority": 2, "estimated_duration": 0.5}
+   🎯 Device: light.living_room
+   ⚡ Action: set_brightness
+   📊 Value: 20
+   ✅ State Published:
+   📍 Topic: home/light/living_room/state
+   📦 New State: {
+      "state": "on",
+      "brightness": 20,
+      "color": "white",
+      "timestamp": "2025-10-03T12:31:19.010577",
+      "device_type": "light",
+      "location": "living_room",
+      "online": true,
+      "power_consumption": 16.0
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/light/kitchen/set
+   📦 Payload: {"action": "turn_off", "timestamp": "2025-10-03T12:31:18.506883", "source": "executor_agent", "value": false, "scheduled_at": "2025-10-03T12:31:18.503491", "priority": 2, "estimated_duration": 0.5}
+   🎯 Device: light.kitchen
+   ⚡ Action: turn_off
+   📊 Value: False
+   ✅ State Published:
+   📍 Topic: home/light/kitchen/state
+   📦 New State: {
+      "state": "off",
+      "brightness": 0,
+      "color": "white",
+      "timestamp": "2025-10-03T12:31:19.513014",
+      "device_type": "light",
+      "location": "kitchen",
+      "online": true,
+      "power_consumption": 0.0
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/thermostat/main/set
+   📦 Payload: {"action": "set_temperature", "timestamp": "2025-10-03T12:31:18.511812", "source": "executor_agent", "value": 21.0, "scheduled_at": "2025-10-03T12:31:18.503497", "priority": 3, "estimated_duration": 1.0}
+   🎯 Device: thermostat.main
+   ⚡ Action: set_temperature
+   📊 Value: 21.0
+   ✅ State Published:
+   📍 Topic: home/thermostat/main/state
+   📦 New State: {
+      "temperature": 23.7,
+      "target": 21.0,
+      "mode": "auto",
+      "timestamp": "2025-10-03T12:31:20.515210",
+      "device_type": "thermostat",
+      "location": "main",
+      "online": true,
+      "humidity": 42
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/lock/front_door/set
+   📦 Payload: {"action": "lock", "timestamp": "2025-10-03T12:31:28.590458", "source": "executor_agent", "value": true, "scheduled_at": "2025-10-03T12:31:28.590395", "priority": 1, "estimated_duration": 0.8}
+   🎯 Device: lock.front_door
+   ⚡ Action: lock
+   📊 Value: True
+   ✅ State Published:
+   📍 Topic: home/lock/front_door/state
+   📦 New State: {
+      "locked": true,
+      "battery": 75.13105098271332,
+      "timestamp": "2025-10-03T12:31:29.397248",
+      "device_type": "lock",
+      "location": "front_door",
+      "online": true,
+      "last_access": "2025-10-03T12:31:29.397214"
+}
+
+🔧 COMMAND RECEIVED:
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+   📍 Topic: home/light/living_room/set
+   📦 Payload: {"action": "turn_off", "timestamp": "2025-10-03T12:31:28.595860", "source": "executor_agent", "value": false, "scheduled_at": "2025-10-03T12:31:28.590374", "priority": 2, "estimated_duration": 0.5}
+   🎯 Device: light.living_room
+   ⚡ Action: turn_off
+   📊 Value: False
+   ✅ State Published:
+   📍 Topic: home/light/living_room/state
+   📦 New State: {
+      "state": "off",
+      "brightness": 0,
+      "color": "white",
+      "timestamp": "2025-10-03T12:31:29.902053",
+      "device_type": "light",
+      "location": "living_room",
+      "online": true,
+      "power_consumption": 0.0
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/thermostat/main/set
+   📦 Payload: {"action": "set_temperature", "timestamp": "2025-10-03T12:31:28.598339", "source": "executor_agent", "value": 20.0, "scheduled_at": "2025-10-03T12:31:28.590387", "priority": 3, "estimated_duration": 1.0}
+   🎯 Device: thermostat.main
+   ⚡ Action: set_temperature
+   📊 Value: 20.0
+   ✅ State Published:
+   📍 Topic: home/thermostat/main/state
+   📦 New State: {
+      "temperature": 23.7,
+      "target": 20.0,
+      "mode": "auto",
+      "timestamp": "2025-10-03T12:31:30.907629",
+      "device_type": "thermostat",
+      "location": "main",
+      "online": true,
+      "humidity": 42
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/light/bedroom/set
+   📦 Payload: {"action": "set_brightness", "timestamp": "2025-10-03T12:31:28.612516", "source": "executor_agent", "value": 75, "scheduled_at": "2025-10-03T12:31:28.612420", "priority": 2, "estimated_duration": 0.5}
+   🎯 Device: light.bedroom
+   ⚡ Action: set_brightness
+   📊 Value: 75
+   ✅ State Published:
+   📍 Topic: home/light/bedroom/state
+   📦 New State: {
+      "state": "on",
+      "brightness": 75,
+      "color": "white",
+      "timestamp": "2025-10-03T12:31:31.409660",
+      "device_type": "light",
+      "location": "bedroom",
+      "online": true,
+      "power_consumption": 60.0
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/thermostat/main/set
+   📦 Payload: {"action": "set_temperature", "timestamp": "2025-10-03T12:31:28.615458", "source": "executor_agent", "value": 22.0, "scheduled_at": "2025-10-03T12:31:28.612436", "priority": 3, "estimated_duration": 1.0}
+   🎯 Device: thermostat.main
+   ⚡ Action: set_temperature
+   📊 Value: 22.0
+   ✅ State Published:
+   📍 Topic: home/thermostat/main/state
+   📦 New State: {
+      "temperature": 23.7,
+      "target": 22.0,
+      "mode": "auto",
+      "timestamp": "2025-10-03T12:31:32.413218",
+      "device_type": "thermostat",
+      "location": "main",
+      "online": true,
+      "humidity": 42
+}
+
+🔧 COMMAND RECEIVED:
+   📍 Topic: home/switch/coffee_maker/set
+   📦 Payload: {"action": "turn_on", "timestamp": "2025-10-03T12:31:28.617652", "source": "executor_agent", "value": true, "scheduled_at": "2025-10-03T12:31:28.612443", "priority": 5, "estimated_duration": 0.2}
+   🎯 Device: switch.coffee_maker
+   ⚡ Action: turn_on
+   📊 Value: True
+   ✅ State Published:
+   📍 Topic: home/switch/coffee_maker/state
+   📦 New State: {
+      "state": "on",
+      "power_consumption": 5.5023962553497485,
+      "timestamp": "2025-10-03T12:31:32.616312",
+      "device_type": "switch",
+      "location": "coffee_maker",
+      "online": true
+}
+
+📊 Sensor Update: home/living_room/temperature/state -> 24.0
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 521
+📊 Sensor Update: home/living_room/temperature/state -> 24.9
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 108
+📊 Sensor Update: home/living_room/temperature/state -> 21.7
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 985
+📊 Sensor Update: home/living_room/temperature/state -> 21.2
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 784
+📊 Sensor Update: home/living_room/temperature/state -> 21.6
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 332
+📊 Sensor Update: home/living_room/temperature/state -> 24.7
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 183
+📊 Sensor Update: home/living_room/temperature/state -> 21.5
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 237
+📊 Sensor Update: home/living_room/temperature/state -> 22.4
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 915
+📊 Sensor Update: home/living_room/temperature/state -> 24.8
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 248
+📊 Sensor Update: home/living_room/temperature/state -> 21.3
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 605
+📊 Sensor Update: home/living_room/temperature/state -> 23.0
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 451
+📊 Sensor Update: home/living_room/temperature/state -> 20.9
+📊 Sensor Update: home/bedroom/motion/state -> N/A
+📊 Sensor Update: home/outdoor/light_sensor/state -> 893
+❌ MQTT error: [code:7] The connection was lost.
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+🔄 Attempting to reconnect in 5 seconds...
+❌ MQTT error: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused
+ERROR:src.simulators.device_simulator:Error in periodic state updates: [Errno 111] Connection refused

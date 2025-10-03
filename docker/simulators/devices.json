@@ -1,0 +1,238 @@
+{
+  "light": [
+    {
+      "id": "living_room_main",
+      "name": "Living Room Light",
+      "initial_brightness": 80,
+      "location": "Living Room",
+      "features": ["brightness", "color", "dimming"]
+    },
+    {
+      "id": "bedroom_main",
+      "name": "Bedroom Light", 
+      "initial_brightness": 60,
+      "location": "Bedroom",
+      "features": ["brightness", "dimming"]
+    },
+    {
+      "id": "kitchen_main",
+      "name": "Kitchen Light",
+      "initial_brightness": 100,
+      "location": "Kitchen", 
+      "features": ["brightness"]
+    },
+    {
+      "id": "kitchen_under_cabinet",
+      "name": "Kitchen Under Cabinet",
+      "initial_brightness": 75,
+      "location": "Kitchen", 
+      "features": ["brightness", "color"]
+    },
+    {
+      "id": "hallway_main",
+      "name": "Hallway Light",
+      "initial_brightness": 70,
+      "location": "Hallway",
+      "features": ["brightness", "motion_activation"]
+    },
+    {
+      "id": "bathroom_main",
+      "name": "Bathroom Light",
+      "initial_brightness": 90,
+      "location": "Bathroom",
+      "features": ["brightness", "dimming"]
+    },
+    {
+      "id": "outdoor_front",
+      "name": "Front Porch Light",
+      "initial_brightness": 85,
+      "location": "Front Porch",
+      "features": ["brightness", "motion_activation", "scheduling"]
+    },
+    {
+      "id": "outdoor_back",
+      "name": "Backyard Light",
+      "initial_brightness": 75,
+      "location": "Backyard",
+      "features": ["brightness", "motion_activation"]
+    }
+  ],
+  "thermostat": [
+    {
+      "id": "main",
+      "name": "Main Thermostat",
+      "initial_temperature": 22,
+      "location": "Living Room",
+      "features": ["heating", "cooling", "scheduling"]
+    },
+    {
+      "id": "bedroom",
+      "name": "Bedroom Thermostat",
+      "initial_temperature": 20,
+      "location": "Bedroom",
+      "features": ["heating", "cooling"]
+    }
+  ],
+  "lock": [
+    {
+      "id": "front_door",
+      "name": "Front Door Lock",
+      "initial_locked": true,
+      "location": "Front Entry",
+      "features": ["keypad", "remote_unlock", "auto_lock"]
+    },
+    {
+      "id": "back_door", 
+      "name": "Back Door Lock",
+      "initial_locked": false,
+      "location": "Back Entry",
+      "features": ["remote_unlock"]
+    },
+    {
+      "id": "garage",
+      "name": "Garage Door Lock",
+      "initial_locked": true,
+      "location": "Garage",
+      "features": ["remote_unlock", "auto_lock"]
+    }
+  ],
+  "media": [
+    {
+      "id": "living_room",
+      "name": "Living Room TV",
+      "initial_volume": 30,
+      "location": "Living Room",
+      "features": ["volume", "input_selection", "power", "streaming"]
+    },
+    {
+      "id": "bedroom",
+      "name": "Bedroom Speaker",
+      "initial_volume": 20,
+      "location": "Bedroom", 
+      "features": ["volume", "bluetooth", "streaming"]
+    },
+    {
+      "id": "kitchen",
+      "name": "Kitchen Radio",
+      "initial_volume": 25,
+      "location": "Kitchen",
+      "features": ["volume", "radio", "bluetooth"]
+    }
+  ],
+  "sensor": [
+    {
+      "id": "motion_living",
+      "name": "Living Room Motion",
+      "sensor_type": "motion",
+      "location": "Living Room",
+      "features": ["motion_detection", "battery_monitor"]
+    },
+    {
+      "id": "motion_hallway",
+      "name": "Hallway Motion",
+      "sensor_type": "motion", 
+      "location": "Hallway",
+      "features": ["motion_detection", "battery_monitor"]
+    },
+    {
+      "id": "motion_bedroom",
+      "name": "Bedroom Motion",
+      "sensor_type": "motion", 
+      "location": "Bedroom",
+      "features": ["motion_detection", "battery_monitor"]
+    },
+    {
+      "id": "temp_living_room",
+      "name": "Living Room Temperature",
+      "sensor_type": "temperature",
+      "location": "Living Room",
+      "features": ["temperature", "humidity"]
+    },
+    {
+      "id": "temp_outdoor",
+      "name": "Outdoor Temperature",
+      "sensor_type": "temperature",
+      "location": "Outdoor",
+      "features": ["temperature", "battery_monitor", "weather_resistant"]
+    },
+    {
+      "id": "humidity_bathroom",
+      "name": "Bathroom Humidity",
+      "sensor_type": "humidity",
+      "location": "Bathroom",
+      "features": ["humidity", "temperature", "battery_monitor"]
+    },
+    {
+      "id": "light_sensor_outdoor",
+      "name": "Outdoor Light Sensor",
+      "sensor_type": "light",
+      "location": "Outdoor",
+      "features": ["light_level", "battery_monitor", "weather_resistant"]
+    },
+    {
+      "id": "air_quality_living",
+      "name": "Living Room Air Quality",
+      "sensor_type": "air_quality",
+      "location": "Living Room",
+      "features": ["co2", "voc", "pm25"]
+    },
+    {
+      "id": "door_front",
+      "name": "Front Door Sensor",
+      "sensor_type": "door",
+      "location": "Front Entry",
+      "features": ["open_close_detection", "battery_monitor"]
+    },
+    {
+      "id": "door_back",
+      "name": "Back Door Sensor",
+      "sensor_type": "door",
+      "location": "Back Entry",
+      "features": ["open_close_detection", "battery_monitor"]
+    },
+    {
+      "id": "window_living",
+      "name": "Living Room Window",
+      "sensor_type": "window",
+      "location": "Living Room",
+      "features": ["open_close_detection", "battery_monitor"]
+    },
+    {
+      "id": "window_bedroom",
+      "name": "Bedroom Window",
+      "sensor_type": "window",
+      "location": "Bedroom",
+      "features": ["open_close_detection", "battery_monitor"]
+    }
+  ],
+  "switch": [
+    {
+      "id": "fan_living_room",
+      "name": "Living Room Fan",
+      "initial_state": false,
+      "location": "Living Room",
+      "features": ["speed_control", "timer"]
+    },
+    {
+      "id": "fan_bedroom",
+      "name": "Bedroom Fan",
+      "initial_state": false,
+      "location": "Bedroom",
+      "features": ["speed_control", "timer"]
+    },
+    {
+      "id": "outlet_kitchen",
+      "name": "Kitchen Coffee Maker",
+      "initial_state": false,
+      "location": "Kitchen",
+      "features": ["scheduling", "energy_monitoring"]
+    },
+    {
+      "id": "outlet_living_room",
+      "name": "Living Room Lamp",
+      "initial_state": true,
+      "location": "Living Room",
+      "features": ["energy_monitoring"]
+    }
+  ]
+}
