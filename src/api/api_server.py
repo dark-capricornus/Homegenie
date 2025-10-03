@@ -34,7 +34,7 @@ from src.core.context_store import ContextStore
 from src.agents.sensor_agent import SensorAgent
 from src.agents.executor_agent import ExecutorAgent
 # from src.agents.voice_agent import VoiceAgent  # Temporarily disabled for Docker
-from src.agents.enhanced_memory_agent import EnhancedMemoryAgent
+from agents.memory_agent import EnhancedMemoryAgent
 
 
 # Configure logging
