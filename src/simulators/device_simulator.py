@@ -43,8 +43,7 @@ class DeviceSimulator:
     def __init__(
         self,
         broker_host: str = "localhost",
-        broker_port: int = 1883,
-        client_id: Optional[str] = None
+        broker_port: int = 1883
     ):
         """
         Initialize the device simulator.
@@ -52,11 +51,10 @@ class DeviceSimulator:
         Args:
             broker_host (str): MQTT broker hostname
             broker_port (int): MQTT broker port  
-            client_id (Optional[str]): MQTT client ID
         """
         self.broker_host = broker_host
         self.broker_port = broker_port
-        self.client_id = client_id or f"device_simulator_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.client_id = f"device_simulator_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
         self._running = False
         self._client: Optional[aiomqtt.Client] = None
@@ -304,8 +302,7 @@ class DeviceSimulator:
             
             async with aiomqtt.Client(
                 hostname=self.broker_host,
-                port=self.broker_port,
-                client_id=f"{self.client_id}_publisher"
+                port=self.broker_port
             ) as client:
                 await client.publish(state_topic, state_payload)
             
@@ -345,8 +342,7 @@ class DeviceSimulator:
                 
                 async with aiomqtt.Client(
                     hostname=self.broker_host,
-                    port=self.broker_port,
-                    client_id=f"{self.client_id}_sensors"
+                    port=self.broker_port
                 ) as client:
                     
                     for topic, state in sensor_updates:
@@ -386,8 +382,7 @@ class DeviceSimulator:
             try:
                 async with aiomqtt.Client(
                     hostname=self.broker_host,
-                    port=self.broker_port,
-                    client_id=self.client_id
+                    port=self.broker_port
                 ) as client:
                     
                     self._client = client

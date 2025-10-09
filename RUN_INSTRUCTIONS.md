@@ -1,528 +1,317 @@
-# 🚀 HomeGenie Complete Deployment Guide
+# HomeGenie Smart Home Automation - Run Instructions
 
-## Quick Start (Recommended)
+## 🏠 Overview
+HomeGenie is a comprehensive smart home automation system with Flutter mobile app, FastAPI backend, MQTT device simulation, and real-time device management.
 
-### Option 1: Backend + Frontend Separation (Recommended for Development)
+**Current Status: ✅ WORKING**
+- Network IP: `10.132.71.35`
+- API Endpoint: `http://<IP_ADDR>`
+- Web Frontend: `http://10.132.71.35:3000` (nginx issues - use API directly)
+- MQTT Broker: `10.132.71.35:1883`
+- Device Count: 7 simulated devices (lights, thermostat, sensors, locks)
 
-#### Terminal 1: Start Backend Services
-```bash
-# Navigate to project directory
-cd /home/harish/Desktop/Homegenie
+---
 
-# Run the backend startup script
-./start_backend.sh
+## 🚀 Quick Start
 
-# OR manually:
-docker compose up --build mqtt-broker device-simulator api-backend
+### Prerequisites
+- Docker and Docker Compose installed
+- Network connectivity on port 8080, 3000, and 1883
 
-# This will start:
-# - MQTT Broker (port 1883, WebSocket: 9001)
-# - Device Simulator (internal)
-# - API Backend (port 8000)
-```
-
-#### Terminal 2: Start Flutter Frontend
-```bash
-# In a new terminal, start Flutter
-./start_frontend.sh
-
-# OR manually:
-cd frontend
-flutter run -d chrome --web-port 3000
-# OR for mobile device:
-flutter run -d [your-device-id]
-# OR for hot reload development:
-flutter run --hot
-```
-
-### Option 2: Full Docker Deployment (Production)
-```bash
-# 1. Navigate to project directory
-cd /home/harish/Desktop/Homegenie
-
-# 2. Activate virtual environment (if using one)
-source env/bin/activate
-
-# 3. Clean up any existing containers
-docker compose down
-
-# 4. Kill any processes using port 8000 (if needed)
-sudo fuser -k 8000/tcp
-
-# 5. Uncomment web-app service in docker-compose.yml, then:
-docker compose up --build
-
-# This will start:
-# - MQTT Broker (port 1883, WebSocket: 9001)
-# - Device Simulator (internal)
-# - API Backend (port 8000)
-# - Web App (port 3000) - if uncommented
-```
-
-### Option 2: Mobile App Development
-
-#### Prerequisites for Mobile Development
-```bash
-# Install Flutter SDK (if not already installed)
-# Download from: https://flutter.dev/docs/get-started/install
-
-# Verify Flutter installation
-flutter doctor
-
-# For Android development, ensure you have:
-# - Android Studio installed
-# - Android SDK configured
-# - USB debugging enabled on device OR Android emulator running
-
-# For iOS development (macOS only):
-# - Xcode installed
-# - iOS Simulator OR physical iOS device connected
-```
-
-#### Build and Run Mobile App
-```bash
-# 1. Navigate to frontend directory  
-cd /home/harish/Desktop/Homegenie/frontend
-
-# 2. Get Flutter dependencies
-flutter pub get
-
-# 3. Check connected devices
-flutter devices
-
-# 4. For Android (choose one):
-# Build APK for testing
-flutter build apk --debug
-
-# Build release APK
-flutter build apk --release
-
-# Build App Bundle for Play Store
-flutter build appbundle --release
-
-# Run on connected Android device/emulator
-flutter run
-
-# 5. For iOS (macOS only):
-# Build for iOS
-flutter build ios --release
-
-# Run on iOS device/simulator
-flutter run
-
-# 6. For development with hot reload
-flutter run --hot
-```
-
-### Option 3: Manual Deployment (Step by Step)
-
-#### Terminal 1: Start MQTT Broker
+### 1. Start the System
 ```bash
 cd /home/harish/Desktop/Homegenie
-docker compose up mqtt-broker
+docker-compose up --build -d
 ```
 
-#### Terminal 2: Start Device Simulator  
+### 2. Verify System Health
 ```bash
-cd /home/harish/Desktop/Homegenie
-source env/bin/activate
-python src/simulators/device_simulator.py
-```
-
-#### Terminal 3: Start API Backend
-```bash
-cd /home/harish/Desktop/Homegenie
-source env/bin/activate
-python docker/backend/api_runner.py
-```
-
-#### Terminal 4: Start Flutter Web App
-```bash
-cd /home/harish/Desktop/Homegenie/frontend
-flutter run -d web-server --web-port 3000
-```
-
-### Option 4: Development Mode (Hot Reload)
-```bash
-# Terminal 1: Start backend services
-cd /home/harish/Desktop/Homegenie
-docker compose up mqtt-broker device-simulator api-backend
-
-# Terminal 2: Start Flutter in development mode
-cd frontend
-flutter run -d web-server --web-port 3000 --hot
-# OR for mobile development
-flutter run --hot  # Connects to first available device
-```
-
----
-
-## 🌐 Access Your System
-
-### Docker Deployment Access:
-- **📱 Web App**: http://localhost:3000
-- **📖 API Documentation**: http://localhost:8000/docs  
-- **🔧 Alternative API Docs**: http://localhost:8000/redoc
-- **🔌 MQTT Broker**: localhost:1883
-- **🌐 MQTT WebSocket**: localhost:9001
-
-### Mobile App Configuration:
-For mobile apps to connect to your backend, you'll need to:
-
-1. **Find your local IP address:**
-```bash
-# On Linux/macOS
-ip addr show | grep "inet " | grep -v 127.0.0.1
-# OR
-ifconfig | grep "inet " | grep -v 127.0.0.1
-```
-
-2. **Update API base URL in mobile app:**
-```bash
-# Edit the Flutter app configuration
-# Update API_BASE_URL from localhost to your actual IP
-# Example: http://192.168.1.100:8000
-```
-
-3. **Test API connectivity from mobile:**
-```bash
-# From mobile device browser, visit:
-# http://YOUR_IP:8000/docs
-# Example: http://192.168.1.100:8000/docs
-```
-
----
-
-## 🛠️ Prerequisites Check
-
-### Install Dependencies (if needed)
-```bash
-cd /home/harish/Desktop/Homegenie
-
-# Create virtual environment (recommended)
-python3 -m venv venv
-source venv/bin/activate
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Install Flutter dependencies
-cd frontend
-flutter pub get
-cd ..
-```
-
-### System Requirements
-- ✅ Docker & Docker Compose
-- ✅ Python 3.12+
-- ✅ Flutter SDK
-- ✅ Web browser (Chrome/Firefox)
-
----
-
-## 🎮 Using Your HomeGenie System
-
-### Quick Actions (Web Dashboard)
-- **🏠 Make it Cozy**: Dims lights, sets comfortable temperature
-- **🌱 Save Energy**: Turns off unnecessary devices
-- **🌙 Goodnight**: Locks doors, turns off lights, sets sleep mode
-
-### Voice Commands (API)
-```bash
-# Test voice command via API
-curl -X POST "http://localhost:8000/voice/command" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "turn on living room lights"}'
-```
-
-### Manual Goals
-```bash
-# Send custom goals
-curl -X POST "http://localhost:8000/goal/user123?goal=turn on kitchen lights"
-```
-
-### Device Control
-- Click any device card to see details
-- Use toggles to control lights, locks, media
-- View real-time sensor data
-- Auto-refresh every 2 seconds
-
----
-
-## 🔧 Troubleshooting
-
-### Docker Issues
-
-#### If ports are already in use:
-```bash
-# Check what's using the ports
-sudo netstat -tulpn | grep :8000
-sudo netstat -tulpn | grep :3000
-sudo netstat -tulpn | grep :1883
-
-# Kill processes using the ports
-sudo fuser -k 8000/tcp
-sudo fuser -k 3000/tcp
-sudo fuser -k 1883/tcp
-```
-
-#### If Docker build fails with nginx.conf error:
-```bash
-# This should already be fixed, but if needed:
-cp docker/frontend/nginx.conf frontend/nginx.conf
-```
-
-#### If Docker build takes too long:
-```bash
-# Stop current build
-Ctrl+C
-
-# Build only specific services
-docker compose up mqtt-broker device-simulator api-backend
-# Then run frontend manually
-```
-
-### Flutter Issues
-
-#### If Flutter web fails to run:
-```bash
-cd frontend
-flutter clean  
-flutter pub get
-flutter run -d web-server --web-port 3000
-```
-
-#### If mobile build fails:
-```bash
-# Check Flutter setup
-flutter doctor
-
-# For Android issues:
-
-
-
-
- # Accept licenses
-flutter clean
-flutter pub get
-
-# For iOS issues (macOS only):
-cd ios
-pod install  # If CocoaPods issues
-cd ..
-flutter clean
-flutter pub get
-```
-
-#### If devices don't appear in flutter devices:
-```bash
-# For Android:
-adb devices  # Check USB debugging is enabled
-adb kill-server && adb start-server  # Restart ADB
-
-# For iOS:
-# Ensure device is trusted and Xcode is properly configured
-```
-
-### System Issues
-
-#### If devices don't appear in dashboard:
-1. Check device simulator is running: `docker compose logs device-simulator`
-2. Check API server logs: `docker compose logs api-backend`  
-3. Verify MQTT broker: `docker compose logs mqtt-broker`
-4. Test API directly: `curl http://localhost:8000/devices`
-
-#### If mobile app can't connect to API:
-1. Ensure backend is accessible from mobile device
-2. Check firewall isn't blocking port 8000
-3. Test from mobile browser: `http://YOUR_IP:8000/docs`
-4. Update API base URL in Flutter app configuration
-
----
-
-## 📊 System Status Monitoring
-
-### Check API Health
-```bash
-curl http://localhost:8000/
-```
-
-### View Device States
-```bash
-curl http://localhost:8000/devices
-```
-
-### Monitor MQTT Messages
-```bash
-# Install mosquitto-clients
-sudo apt install mosquitto-clients
-
-# Subscribe to all topics
-mosquitto_sub -h localhost -t "home/#"
-```
-
----
-
-## 🎯 Advanced Features
-
-### Behavioral Learning
-- System learns your usage patterns
-- Get insights: `http://localhost:8000/learning/analytics/user123`
-- View suggestions: `http://localhost:8000/learning/suggestions/user123`
-
-### Voice Control
-- Process voice commands through web interface
-- Natural language understanding
-- Command history tracking
-
-### Real-time Updates
-- Dashboard auto-refreshes every 2 seconds
-- Live device state synchronization
-- Instant feedback on actions
-
----
-
-## 🐛 Logs & Debugging
-
-### View API Server Logs
-```bash
-cd /home/harish/Desktop/Homegenie/src/api
-python3 api_server.py
-# Logs will appear in terminal
-```
-
-### View Device Simulator Logs
-```bash
-cd /home/harish/Desktop/Homegenie/src/simulators
-python3 device_simulator.py
-# Device updates will be logged
-```
-
-### Flutter Debug Mode
-```bash
-cd frontend
-flutter run -d web --web-port 8080 --debug
-```
-
----
-
-## 🎉 Success Indicators
-
-### Docker Deployment Success:
-✅ **Web App** loads at http://localhost:3000  
-✅ **Device cards** appear showing lights, thermostat, locks, etc.  
-✅ **Status message** shows "Ready • Auto-refresh: 2s"  
-✅ **Quick actions** (Make it Cozy, Save Energy, Goodnight) work  
-✅ **Device toggles** respond and update states  
-✅ **API docs** accessible at http://localhost:8000/docs  
-✅ **No Docker errors** in terminal output
-
-### Mobile App Success:
-✅ **Flutter doctor** shows no critical issues  
-✅ **flutter devices** lists your target device  
-✅ **App installs** on device without errors  
-✅ **API connection** works (can see devices)  
-✅ **Device controls** respond from mobile app  
-✅ **Hot reload** works during development
-
-### System Health Check Commands:
-```bash
-# Check all Docker containers are running
-docker compose ps
+# Check containers are running
+docker ps
 
 # Test API health
-curl http://localhost:8000/health
+curl http://<IP_ADDR>/health
 
-# Test device data
-curl http://localhost:8000/devices
+# Check device count
+curl http://<IP_ADDR>/devices
+```
 
-# Check MQTT broker
-docker compose logs mqtt-broker | tail -10
-
-# Flutter app debug info
-flutter run --verbose  # Shows detailed startup info
-```  
+### 3. Access from Mobile/Other Devices
+- **API Base URL**: `http://<IP_ADDR>`
+- **Flutter App**: Update `lib/main.dart` to use IP `<IP_ADDR>`
 
 ---
 
-## 🚀 What You've Built
+## 📱 Flutter Mobile App Setup
 
-Your HomeGenie system includes:
+### Update Network Configuration
+Edit `/home/harish/Desktop/Homegenie/frontend/lib/main.dart`:
 
-- **🏠 Smart Home Control**: Full device management
-- **🎤 Voice Commands**: Natural language processing
-- **🧠 AI Learning**: Behavioral pattern detection
-- **📱 Modern UI**: Material 3 responsive design  
-- **🔄 Real-time Updates**: Live synchronization
-- **🐳 Docker Deployment**: Easy containerized setup
-- **📡 MQTT Integration**: IoT device communication
-- **📊 Analytics Dashboard**: Usage insights
-- **🔧 REST API**: 16+ comprehensive endpoints
+```dart
+// Find and update the API base URL
+static const String baseUrl = 'http://<IP_ADDR>';
+```
 
-**Congratulations! You now have a complete AI-powered smart home system! 🎊**
+### Run Flutter App
+```bash
+cd /home/harish/Desktop/Homegenie/frontend
+flutter run
+```
+
+### Development Mode (Hot Reload)
+```bash
+# Terminal 1: Keep containers running
+docker-compose up
+
+# Terminal 2: Flutter hot reload
+cd frontend
+flutter run --hot
+```
 
 ---
 
-## 📱 Mobile App Configuration
+## 🔧 API Endpoints
 
-### Connecting Mobile App to Backend
+### Base URL: `http://<IP_ADDR>`
 
-The Flutter app needs to know where to find your HomeGenie API. By default, it may be configured for localhost, but mobile devices need your actual IP address.
+### Core Endpoints
+- `GET /` - API information
+- `GET /health` - System health status
+- `GET /devices` - List all devices and states
+- `GET /state` - Complete system state
+- `GET /devices/{device_id}` - Get specific device status
 
-#### Step 1: Find Your Server IP
+### Device Control
+- `POST /devices/control` - Direct device control
+- `POST /devices/{device_id}/toggle` - Toggle device on/off
+- `POST /devices/{device_id}/set?parameter=value` - Set device parameter
+
+### Goal Processing (AI-driven)
+- `POST /goal/{user_id}?goal=<goal>` - Process natural language goals
+  - Examples: "goodnight", "movie time", "turn on lights"
+
+### User Management
+- `POST /prefs/{user_id}?key=<key>&value=<value>` - Set user preferences
+- `GET /prefs/{user_id}` - Get user preferences
+- `GET /history/{user_id}` - Get user interaction history
+
+---
+
+## 🏡 Available Devices
+
+The system currently simulates 7 smart home devices:
+
+### Lights
+- `light.living_room` - Living room light (brightness, color)
+- `light.bedroom` - Bedroom light (brightness, color)  
+- `light.kitchen` - Kitchen light (brightness, color)
+
+### Climate
+- `thermostat.living_room` - Thermostat (temperature, mode)
+
+### Security
+- `lock.front_door` - Smart lock (locked/unlocked)
+
+### Sensors
+- `sensor.outdoor_temp` - Outdoor temperature sensor
+- `sensor.motion_living` - Living room motion sensor
+
+---
+
+## 📊 Example API Calls
+
+### Check System Health
 ```bash
-# Find your local network IP
-hostname -I | awk '{print $1}'
-# OR
-ip route get 1.1.1.1 | awk '{print $7; exit}'
+curl http://<IP_ADDR>/health
 ```
 
-#### Step 2: Update Flutter App Configuration
+### Get All Devices
 ```bash
-# Look for API configuration in Flutter app
-cd frontend
-grep -r "localhost\|127.0.0.1\|8000" lib/
-# Update any hardcoded localhost references to your actual IP
+curl http://<IP_ADDR>/devices | python3 -m json.tool
 ```
 
-#### Step 3: Test API Accessibility  
+### Control a Light
 ```bash
-# From another device on your network, test:
-curl http://YOUR_IP:8000/devices
-# Example: curl http://192.168.1.100:8000/devices
+# Turn on living room light
+curl -X POST "http://<IP_ADDR>/devices/light.living_room/toggle"
+
+# Set brightness
+curl -X POST "http://<IP_ADDR>/devices/light.living_room/set?parameter=brightness&value=75"
 ```
 
-#### Step 4: Build and Deploy Mobile App
+### Process Natural Language Goal
 ```bash
-cd frontend
+# Goodnight routine
+curl -X POST "http://<IP_ADDR>/goal/user1?goal=goodnight"
 
-# For development/testing
-flutter run --release
-
-# For production Android APK
-flutter build apk --release
-# APK will be at: build/app/outputs/flutter-apk/app-release.apk
-
-# For production iOS (macOS only)  
-flutter build ios --release
+# Movie time
+curl -X POST "http://<IP_ADDR>/goal/user1?goal=movie time"
 ```
 
-### Mobile App Features
+---
 
-Your mobile app will have:
-- 📱 **Native UI** - Material Design on Android, Cupertino on iOS
-- 🔄 **Real-time sync** - Live device status updates  
-- 🎤 **Voice commands** - Same AI voice processing as web
-- 🏠 **Full device control** - All smart home features
-- 📊 **Dashboard** - Complete system overview
-- 🌙 **Quick actions** - One-tap scene control
-- 📡 **Offline handling** - Graceful connection management
+## 🐳 Docker Commands
 
-### Distribution Options
+### View Logs
+```bash
+# All container logs
+docker-compose logs
 
-1. **Development Testing**: Install APK directly on Android devices
-2. **Internal Testing**: Use Firebase App Distribution or TestFlight
-3. **Public Release**: Google Play Store / Apple App Store
-4. **Enterprise**: MDM deployment for business use
+# API logs only
+docker-compose logs homegenie-app
 
-**Your HomeGenie system now works on web, mobile, and desktop! 🚀📱💻**
+# MQTT broker logs
+docker-compose logs homegenie-mqtt
+```
+
+### Container Management
+```bash
+# Stop system
+docker-compose down
+
+# Rebuild and restart
+docker-compose up --build -d
+
+# Rebuild without cache
+docker-compose build --no-cache && docker-compose up -d
+```
+
+### Debug Container
+```bash
+# Execute shell in container
+docker exec -it homegenie-app /bin/bash
+
+# Check supervisor status
+docker exec homegenie-app supervisorctl status
+
+# View supervisor logs
+docker exec homegenie-app cat /var/log/supervisor/api.log
+```
+
+---
+
+## 🔍 Troubleshooting
+
+### Container Issues
+1. **Containers not starting**: Check `docker-compose logs`
+2. **API not responding**: Verify port 8080 is available
+3. **MQTT connection issues**: Check port 1883 accessibility
+
+### Network Connectivity
+1. **API not accessible from other devices**: 
+   - Verify IP address: `ip addr show`
+   - Check firewall settings
+   - Ensure port 8080 is open
+
+2. **Flutter app can't connect**:
+   - Update `baseUrl` in Flutter app to `<IP_ADDR>`
+   - Check device is on same network
+
+### Performance Issues
+1. **Slow response**: Check container resource usage with `docker stats`
+2. **Memory issues**: Restart containers with `docker-compose restart`
+
+---
+
+## 🏗️ System Architecture
+
+### Container Structure
+- **homegenie-app**: Unified container with API, simulator, and web frontend
+- **homegenie-mqtt**: Eclipse Mosquitto MQTT broker
+
+### Internal Services (in homegenie-app container)
+- **API Server**: FastAPI on port 8000 (mapped to 8080)
+- **Device Simulator**: Publishes device states via MQTT
+- **Sensor Agent**: Listens to MQTT and updates API state
+- **Web Frontend**: Nginx on port 3000 (nginx has issues, use API directly)
+
+### Data Flow
+```
+Device Simulator → MQTT Broker → Sensor Agent → Context Store → API → Flutter App
+```
+
+---
+
+## 📝 Development Notes
+
+### Known Issues
+1. **Nginx Web Frontend**: Has configuration issues, use API endpoints directly
+2. **Device Control**: Executor agent needs paho-mqtt fix for device control commands
+3. **Web UI**: Flutter web build works, but nginx serving has problems
+
+### Working Features ✅
+- ✅ MQTT broker and device simulation
+- ✅ API server with all endpoints
+- ✅ Real-time device state updates
+- ✅ Network accessibility (<IP_ADDR>)
+- ✅ Flutter mobile app (with correct IP configuration)
+- ✅ Natural language goal processing
+- ✅ User preferences and history
+- ✅ Device discovery and state management
+
+### Future Improvements
+1. Fix executor agent to use paho-mqtt for device control
+2. Resolve nginx configuration for web frontend
+3. Add authentication and user management
+4. Implement device grouping and scenes
+5. Add voice control integration
+
+---
+
+## 🎯 Testing Checklist
+
+### Basic Functionality
+- [ ] Containers start successfully: `docker ps`
+- [ ] API health check: `curl http://<IP_ADDR>/health`
+- [ ] Device discovery: `curl http://<IP_ADDR>/devices`
+- [ ] Flutter app connects and shows devices
+
+### Network Access
+- [ ] API accessible from other devices on network
+- [ ] Flutter app works on mobile devices
+- [ ] MQTT broker accessible for external clients
+
+### Advanced Features
+- [ ] Goal processing works: `curl -X POST "http://<IP_ADDR>/goal/test?goal=goodnight"`
+- [ ] Device state updates in real-time
+- [ ] User preferences save and load correctly
+
+---
+
+## 🆘 Support
+
+### Log Locations
+- API logs: `/var/log/supervisor/api.log` (inside container)
+- Simulator logs: `/var/log/supervisor/simulator.log` (inside container)
+- Nginx logs: `/var/log/supervisor/nginx.log` (inside container)
+
+### Container Health
+```bash
+# Check all container status
+docker-compose ps
+
+# View container health
+docker inspect homegenie-app | grep Health -A 10
+```
+
+### Network Diagnostics
+```bash
+# Check which ports are open
+netstat -tlnp | grep -E '(8080|3000|1883)'
+
+# Test connectivity from another device
+curl -v http://<IP_ADDR>/health
+```
+
+---
+
+## 🏆 Success Metrics
+
+**✅ System is working when:**
+- All containers show "healthy" status
+- API returns device count > 0
+- Flutter app successfully connects and displays devices
+- Real-time device state updates are visible
+- Network access works from other devices on `<IP_ADDR>`
+
+**Current Status: ✅ Core system functional with 7 devices accessible on network IP <IP_ADDR>**

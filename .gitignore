@@ -1,1 +1,52 @@
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*~
+logs/
 docker/mosquitto/log/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+env/
+venv/
+.venv/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Flutter/Dart build artifacts
+frontend/build/.cxx/
+frontend/.dart_tool/
+
+# Docker volumes and data
+emqx/data/
+emqx/log/
+letsencrypt/
+
+# Development files
+.env.local
+.env.development
+.env.test
+
+# Documentation artifacts
+documents/
+
+docker/mosquitto/data/mosquitto.db

@@ -45,7 +45,7 @@ class HomeControlScreen extends StatefulWidget {
 }
 
 class _HomeControlScreenState extends State<HomeControlScreen> {
-  late String baseUrl;
+  String baseUrl = '';
   static const String userId = 'mobile_user_001';
   
   Map<String, dynamic> deviceStates = {};
@@ -97,7 +97,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
         '192.168.1',
         '192.168.0', 
         '10.0.0',
-        '10.92.91',  // Your current network
+        '10.132.71',  // Your current network
         '172.16.0',
         '172.20.10', // iOS hotspot range
         '192.168.43', // Android hotspot range
@@ -115,8 +115,8 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
       
       // Add some specific common development IPs - prioritize current network
       final additionalIps = [
-        'http://10.92.91.35:8080',  // Your current IP with Docker port
-        'http://10.92.91.35:8000',  // Your current IP alternate port
+        'http://10.132.71.35:8080',  // Your current IP with Docker port
+        'http://10.132.71.35:8000',  // Your current IP alternate port
         'http://localhost:8080',    // Fallback Docker port
         'http://localhost:8000',    // Fallback standard port
       ];

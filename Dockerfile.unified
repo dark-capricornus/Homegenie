@@ -1,0 +1,87 @@
+# HomeGenie Unified Container
+# Combines API backend, device simulator, and web frontend in one container
+
+FROM python:3.12-slim as base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    curl \
+    nginx \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy requirements and install Python dependencies
+COPY config/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY src/ ./src/
+COPY docker/backend/api_runner.py ./
+COPY docker/backend/app_config.py ./config/
+COPY docker/simulators/simulator_runner.py ./
+COPY docker/simulators/devices.json ./config/
+
+# Build Flutter web app
+FROM ghcr.io/cirruslabs/flutter:latest as flutter-builder
+WORKDIR /app
+COPY frontend/pubspec.yaml frontend/pubspec.lock ./
+RUN flutter pub get
+COPY frontend/lib/ ./lib/
+COPY frontend/web/ ./web/
+COPY frontend/assets/ ./assets/
+RUN flutter build web --release
+
+# Final unified container
+FROM base as final
+
+# Copy built Flutter web app
+COPY --from=flutter-builder /app/build/web /var/www/html
+
+# Copy nginx configuration
+COPY docker/frontend/nginx.conf /etc/nginx/sites-available/default
+
+# Create supervisor configuration
+RUN mkdir -p /var/log/supervisor
+COPY <<EOF /etc/supervisor/conf.d/supervisord.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:nginx]
+command=nginx -g "daemon off;"
+stdout_logfile=/var/log/supervisor/nginx.log
+stderr_logfile=/var/log/supervisor/nginx.log
+autorestart=true
+
+[program:api]
+command=python api_runner.py
+directory=/app
+stdout_logfile=/var/log/supervisor/api.log
+stderr_logfile=/var/log/supervisor/api.log
+autorestart=true
+environment=MQTT_BROKER_HOST="%(ENV_MQTT_BROKER_HOST)s",MQTT_BROKER_PORT="%(ENV_MQTT_BROKER_PORT)s",API_HOST="0.0.0.0",API_PORT="8000"
+
+[program:simulator]
+command=python simulator_runner.py
+directory=/app
+stdout_logfile=/var/log/supervisor/simulator.log
+stderr_logfile=/var/log/supervisor/simulator.log
+autorestart=true
+environment=MQTT_BROKER_HOST="%(ENV_MQTT_BROKER_HOST)s",MQTT_BROKER_PORT="%(ENV_MQTT_BROKER_PORT)s"
+EOF
+
+# Expose ports
+EXPOSE 8000 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Start supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

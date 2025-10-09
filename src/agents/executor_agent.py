@@ -1,5 +1,5 @@
 """
-ExecutorAgent - MQTT-based device command execution agent
+ExecutorAgent - MQTT-based device command execution agent (paho-mqtt version)
 
 This module provides an ExecutorAgent class that connects to an MQTT broker
 and executes device control commands by publishing to appropriate MQTT topics.
@@ -8,17 +8,19 @@ and executes device control commands by publishing to appropriate MQTT topics.
 import asyncio
 import json
 import logging
+import threading
+import time
 from typing import Optional, Dict, Any, List, Callable
 from datetime import datetime
 
 try:
-    import aiomqtt
+    import paho.mqtt.client as mqtt
 except ImportError:
-    print("aiomqtt not found. Installing...")
+    print("paho-mqtt not found. Installing...")
     import subprocess
     import sys
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "aiomqtt"])
-    import aiomqtt
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "paho-mqtt"])
+    import paho.mqtt.client as mqtt
 
 
 # Configure logging
@@ -55,415 +57,352 @@ class ExecutorAgent:
         self.base_topic = base_topic
         self.client_id = client_id or f"executor_agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        self._client: Optional[aiomqtt.Client] = None
+        self._client: Optional[mqtt.Client] = None
         self._connected = False
-        self._execution_history: List[Dict[str, Any]] = []
-        self._success_callback: Optional[Callable] = None
-        self._error_callback: Optional[Callable] = None
-        
-        # Device type to topic mapping
-        self._device_mappings = {
-            "light": "light",
-            "switch": "switch", 
-            "thermostat": "thermostat",
-            "fan": "fan",
-            "lock": "lock",
-            "sensor": "sensor",
-            "camera": "camera",
-            "alarm": "alarm"
-        }
+        self._lock = threading.Lock()
         
         logger.info(f"ExecutorAgent initialized - Broker: {broker_host}:{broker_port}, Base topic: {base_topic}")
     
-    def set_success_callback(self, callback: Callable[[Dict[str, Any]], None]) -> None:
-        """
-        Set a callback for successful command executions.
-        
-        Args:
-            callback: Function that takes the execution result as argument
-        """
-        self._success_callback = callback
-    
-    def set_error_callback(self, callback: Callable[[str, Exception, Dict[str, Any]], None]) -> None:
-        """
-        Set a callback for execution errors.
-        
-        Args:
-            callback: Function that takes (error_type, exception, task) as arguments
-        """
-        self._error_callback = callback
-    
-    def add_device_mapping(self, device_type: str, topic_segment: str) -> None:
-        """
-        Add or update device type to topic mapping.
-        
-        Args:
-            device_type (str): Device type (e.g., "light", "switch")
-            topic_segment (str): MQTT topic segment for this device type
-        """
-        self._device_mappings[device_type] = topic_segment
-        logger.info(f"Added device mapping: {device_type} -> {topic_segment}")
-    
-    def _parse_device_identifier(self, device: str) -> tuple[str, str]:
-        """
-        Parse device identifier into type and location.
-        
-        Args:
-            device (str): Device identifier like "light.livingroom" or "thermostat.bedroom"
-            
-        Returns:
-            tuple[str, str]: (device_type, location)
-        """
-        if '.' in device:
-            device_type, location = device.split('.', 1)
+    def _on_connect(self, client, userdata, flags, rc):
+        """Callback for when the client receives a CONNACK response from the server."""
+        if rc == 0:
+            logger.info(f"✅ ExecutorAgent connected to MQTT broker at {self.broker_host}:{self.broker_port}")
+            self._connected = True
         else:
-            # If no dot, assume it's just the device type
-            device_type = device
-            location = "default"
-        
-        return device_type.lower(), location.lower()
+            logger.error(f"❌ ExecutorAgent failed to connect, return code {rc}")
+            self._connected = False
     
-    def _build_topic(self, device_type: str, location: str) -> str:
-        """
-        Build MQTT topic for device command.
-        
-        Args:
-            device_type (str): Type of device
-            location (str): Device location/room
-            
-        Returns:
-            str: Complete MQTT topic path
-        """
-        # Map device type to topic segment
-        topic_segment = self._device_mappings.get(device_type, device_type)
-        
-        # Build topic: home/light/livingroom/set
-        topic = f"{self.base_topic}/{topic_segment}/{location}/set"
-        return topic
+    def _on_disconnect(self, client, userdata, rc):
+        """Callback for when the client disconnects from the broker."""
+        self._connected = False
+        if rc != 0:
+            logger.warning(f"⚠️ ExecutorAgent unexpected disconnection from broker (code {rc})")
+        else:
+            logger.info("📡 ExecutorAgent disconnected from MQTT broker")
     
-    def _build_payload(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Build JSON payload for device command.
-        
-        Args:
-            task (dict): Task dictionary with action and parameters
-            
-        Returns:
-            dict: JSON payload to send to device
-        """
-        payload = {
-            "action": task.get("action"),
-            "timestamp": datetime.now().isoformat(),
-            "source": "executor_agent"
-        }
-        
-        # Add value if present
-        if "value" in task:
-            payload["value"] = task["value"]
-        
-        # Add any additional parameters
-        for key, value in task.items():
-            if key not in ["device", "action", "value"]:
-                payload[key] = value
-        
-        return payload
+    def _on_publish(self, client, userdata, mid):
+        """Callback for when a message is published."""
+        logger.debug(f"📤 Message published with ID: {mid}")
     
     async def connect(self) -> bool:
         """
         Connect to the MQTT broker.
         
         Returns:
-            bool: True if connection successful, False otherwise
+            bool: True if connected successfully, False otherwise
         """
-        try:
-            self._client = aiomqtt.Client(
-                hostname=self.broker_host,
-                port=self.broker_port,
-                client_id=self.client_id
-            )
+        with self._lock:
+            if self._connected:
+                logger.debug("Already connected to MQTT broker")
+                return True
             
-            # Test connection
-            async with self._client:
-                self._connected = True
-                logger.info(f"Successfully connected to MQTT broker at {self.broker_host}:{self.broker_port}")
+            try:
+                # Create MQTT client
+                self._client = mqtt.Client()
+                
+                # Set callbacks
+                self._client.on_connect = self._on_connect
+                self._client.on_disconnect = self._on_disconnect
+                self._client.on_publish = self._on_publish
+                
+                # Connect to broker
+                logger.info(f"🔌 ExecutorAgent connecting to MQTT broker {self.broker_host}:{self.broker_port}...")
+                self._client.connect(self.broker_host, self.broker_port, 60)
+                
+                # Start the network loop in a separate thread
+                self._client.loop_start()
+                
+                # Wait for connection (up to 5 seconds)
+                for _ in range(50):  # 5 seconds with 0.1s intervals
+                    if self._connected:
+                        break
+                    await asyncio.sleep(0.1)
+                
+                if not self._connected:
+                    logger.error("❌ Failed to connect within timeout")
+                    return False
+                
+                logger.info("✅ ExecutorAgent connected successfully")
                 return True
                 
-        except Exception as e:
-            logger.error(f"Failed to connect to MQTT broker: {e}")
-            if self._error_callback:
-                self._error_callback("connection_error", e, {})
-            self._connected = False
-            return False
-    
-    async def disconnect(self) -> None:
-        """Disconnect from the MQTT broker."""
-        if self._client:
-            try:
-                # Client will be closed when exiting context manager
-                self._connected = False
-                logger.info("Disconnected from MQTT broker")
             except Exception as e:
-                logger.error(f"Error during disconnect: {e}")
+                logger.error(f"❌ Error connecting to MQTT broker: {e}")
+                self._connected = False
+                return False
+    
+    async def disconnect(self):
+        """Disconnect from the MQTT broker."""
+        with self._lock:
+            if self._client and self._connected:
+                self._client.loop_stop()
+                self._client.disconnect()
+                self._connected = False
+                logger.info("📡 ExecutorAgent disconnected")
+    
+    def _build_command_topic(self, device_type: str, location: str) -> str:
+        """
+        Build the MQTT topic for device commands.
+        
+        Args:
+            device_type (str): Type of device (e.g., "light", "thermostat")
+            location (str): Device location (e.g., "living_room", "bedroom")
+            
+        Returns:
+            str: MQTT topic for device commands
+        """
+        return f"{self.base_topic}/{device_type}/{location}/command"
+    
+    def _parse_device_id(self, device_id: str) -> tuple[str, str]:
+        """
+        Parse device ID into device type and location.
+        
+        Args:
+            device_id (str): Device ID in format "type.location"
+            
+        Returns:
+            tuple: (device_type, location)
+        """
+        if '.' in device_id:
+            device_type, location = device_id.split('.', 1)
+        else:
+            # Fallback for devices without type prefix
+            device_type = "device"
+            location = device_id
+        
+        return device_type, location
+    
+    def _build_command_payload(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Build the command payload from a task specification.
+        
+        Args:
+            task (Dict[str, Any]): Task specification
+            
+        Returns:
+            Dict[str, Any]: Command payload for MQTT
+        """
+        action = task.get("action", "")
+        device_id = task.get("device", "")
+        
+        # Base command structure
+        command = {
+            "timestamp": datetime.now().isoformat(),
+            "source": "executor_agent",
+            "device": device_id,
+            "action": action
+        }
+        
+        # Map common actions to device commands
+        if action == "turn_on":
+            command.update({"state": "on"})
+        elif action == "turn_off":
+            command.update({"state": "off"})
+        elif action == "toggle":
+            command.update({"toggle": True})
+        elif action == "set_brightness":
+            command.update({"brightness": task.get("value", 50)})
+        elif action == "set_color":
+            command.update({"color": task.get("value", "white")})
+        elif action == "set_temperature":
+            command.update({"target_temperature": task.get("value", 22.0)})
+        elif action == "lock":
+            command.update({"locked": True})
+        elif action == "unlock":
+            command.update({"locked": False})
+        elif action == "set_speed":
+            command.update({"speed": task.get("value", 1)})
+        else:
+            # Generic action - include all task parameters
+            for key, value in task.items():
+                if key not in ["device", "action"]:
+                    command[key] = value
+        
+        return command
     
     async def execute(self, task: Dict[str, Any]) -> bool:
         """
         Execute a device control task.
         
         Args:
-            task (dict): Task dictionary with format:
-                       {"device": "light.livingroom", "action": "set_brightness", "value": 40}
-                       
+            task (Dict[str, Any]): Task specification with device, action, and parameters
+            
         Returns:
-            bool: True if execution successful, False otherwise
+            bool: True if command was published successfully, False otherwise
         """
         try:
-            # Validate task format
-            if not isinstance(task, dict):
-                raise ValueError("Task must be a dictionary")
+            # Ensure we're connected
+            if not self._connected:
+                logger.info("🔌 Not connected, attempting to connect...")
+                if not await self.connect():
+                    logger.error("❌ Failed to connect to MQTT broker")
+                    return False
             
-            if "device" not in task:
-                raise ValueError("Task must contain 'device' field")
+            # Parse device information
+            device_id = task.get("device", "")
+            if not device_id:
+                logger.error("❌ No device specified in task")
+                return False
             
-            if "action" not in task:
-                raise ValueError("Task must contain 'action' field")
+            device_type, location = self._parse_device_id(device_id)
             
-            # Parse device identifier
-            device_type, location = self._parse_device_identifier(task["device"])
+            # Build command topic and payload
+            command_topic = self._build_command_topic(device_type, location)
+            command_payload = self._build_command_payload(task)
             
-            # Build topic and payload
-            topic = self._build_topic(device_type, location)
-            payload = self._build_payload(task)
+            # Publish command
+            payload_json = json.dumps(command_payload)
             
-            logger.info(f"Executing task: {task}")
-            logger.debug(f"Publishing to topic: {topic}")
-            logger.debug(f"Payload: {payload}")
+            logger.info(f"📤 Publishing command to {command_topic}: {payload_json}")
             
-            # Execute command via MQTT
-            async with aiomqtt.Client(
-                hostname=self.broker_host,
-                port=self.broker_port,
-                client_id=self.client_id
-            ) as client:
-                
-                # Publish command
-                await client.publish(topic, json.dumps(payload))
-                
-                # Record execution
-                execution_record = {
-                    "timestamp": datetime.now().isoformat(),
-                    "task": task,
-                    "topic": topic,
-                    "payload": payload,
-                    "status": "success"
-                }
-                
-                self._execution_history.append(execution_record)
-                
-                # Keep history limited to last 100 executions
-                if len(self._execution_history) > 100:
-                    self._execution_history.pop(0)
-                
-                logger.info(f"✅ Successfully executed task for {task['device']}")
-                
-                # Call success callback
-                if self._success_callback:
-                    try:
-                        if asyncio.iscoroutinefunction(self._success_callback):
-                            await self._success_callback(execution_record)
-                        else:
-                            self._success_callback(execution_record)
-                    except Exception as e:
-                        logger.error(f"Error in success callback: {e}")
-                
-                return True
-                
+            with self._lock:
+                if self._client and self._connected:
+                    result = self._client.publish(command_topic, payload_json, qos=1)
+                    
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        logger.info(f"✅ Command sent successfully for {device_id}")
+                        return True
+                    else:
+                        logger.error(f"❌ Failed to publish command: {result.rc}")
+                        return False
+                else:
+                    logger.error("❌ MQTT client not connected")
+                    return False
+            
         except Exception as e:
-            logger.error(f"❌ Failed to execute task {task}: {e}")
-            
-            # Record failed execution
-            execution_record = {
-                "timestamp": datetime.now().isoformat(),
-                "task": task,
-                "error": str(e),
-                "status": "failed"
-            }
-            
-            self._execution_history.append(execution_record)
-            
-            # Call error callback
-            if self._error_callback:
-                self._error_callback("execution_error", e, task)
-            
+            logger.error(f"❌ Error executing task: {e}")
             return False
     
-    async def execute_batch(self, tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def execute_batch(self, tasks: List[Dict[str, Any]]) -> List[bool]:
         """
-        Execute multiple tasks in batch.
+        Execute multiple tasks in sequence.
         
         Args:
-            tasks (List[dict]): List of task dictionaries
+            tasks (List[Dict[str, Any]]): List of task specifications
             
         Returns:
-            dict: Batch execution results with success/failure counts
+            List[bool]: Results for each task
         """
-        results = {
-            "total": len(tasks),
-            "successful": 0,
-            "failed": 0,
-            "results": []
-        }
-        
-        logger.info(f"Executing batch of {len(tasks)} tasks")
+        results = []
         
         for i, task in enumerate(tasks):
-            try:
-                success = await self.execute(task)
-                result = {
-                    "task_index": i,
-                    "task": task,
-                    "success": success
-                }
-                
-                if success:
-                    results["successful"] += 1
-                else:
-                    results["failed"] += 1
-                    
-                results["results"].append(result)
-                
-            except Exception as e:
-                logger.error(f"Error in batch execution for task {i}: {e}")
-                results["failed"] += 1
-                results["results"].append({
-                    "task_index": i,
-                    "task": task,
-                    "success": False,
-                    "error": str(e)
-                })
+            logger.info(f"📋 Executing task {i+1}/{len(tasks)}")
+            result = await self.execute(task)
+            results.append(result)
+            
+            # Small delay between commands to avoid overwhelming devices
+            if i < len(tasks) - 1:
+                await asyncio.sleep(0.1)
         
-        logger.info(f"Batch execution complete: {results['successful']}/{results['total']} successful")
+        successful = sum(results)
+        logger.info(f"📊 Batch execution completed: {successful}/{len(tasks)} successful")
+        
         return results
     
-    def get_execution_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def is_connected(self) -> bool:
         """
-        Get recent execution history.
+        Check if the agent is connected to the MQTT broker.
         
-        Args:
-            limit (int): Maximum number of records to return
-            
         Returns:
-            List[dict]: Recent execution records
+            bool: True if connected, False otherwise
         """
-        return self._execution_history[-limit:]
+        return self._connected
     
-    def get_stats(self) -> Dict[str, Any]:
+    async def get_status(self) -> Dict[str, Any]:
         """
-        Get executor agent statistics.
+        Get the current status of the executor agent.
         
         Returns:
-            dict: Agent statistics
+            Dict[str, Any]: Status information
         """
-        total_executions = len(self._execution_history)
-        successful = len([r for r in self._execution_history if r.get("status") == "success"])
-        failed = total_executions - successful
-        
         return {
             "connected": self._connected,
-            "broker": f"{self.broker_host}:{self.broker_port}",
-            "client_id": self.client_id,
+            "broker_host": self.broker_host,
+            "broker_port": self.broker_port,
             "base_topic": self.base_topic,
-            "total_executions": total_executions,
-            "successful_executions": successful,
-            "failed_executions": failed,
-            "success_rate": (successful / total_executions * 100) if total_executions > 0 else 0,
-            "device_mappings": self._device_mappings
+            "client_id": self.client_id,
+            "timestamp": datetime.now().isoformat()
         }
-    
-    def clear_history(self) -> None:
-        """Clear execution history."""
-        self._execution_history.clear()
-        logger.info("Execution history cleared")
 
 
-# Example usage and testing
-async def example_usage():
-    """Example of how to use the ExecutorAgent."""
-    print("=== ExecutorAgent Example ===")
+# Utility functions for common device operations
+async def create_executor_agent(
+    broker_host: str = "localhost",
+    broker_port: int = 1883,
+    auto_connect: bool = True
+) -> ExecutorAgent:
+    """
+    Create and optionally connect an ExecutorAgent instance.
     
-    # Create executor agent
-    executor = ExecutorAgent(
-        broker_host="localhost",
-        broker_port=1883,
-        base_topic="home"
-    )
+    Args:
+        broker_host (str): MQTT broker hostname
+        broker_port (int): MQTT broker port
+        auto_connect (bool): Whether to automatically connect
     
-    # Set up callbacks
-    def success_callback(result: dict):
-        print(f"✅ Command executed successfully: {result['task']['device']} -> {result['task']['action']}")
+    Returns:
+        ExecutorAgent: Configured executor agent instance
+    """
+    agent = ExecutorAgent(broker_host=broker_host, broker_port=broker_port)
     
-    def error_callback(error_type: str, exception: Exception, task: dict):
-        print(f"❌ Execution failed ({error_type}): {task} -> {exception}")
+    if auto_connect:
+        await agent.connect()
     
-    executor.set_success_callback(success_callback)
-    executor.set_error_callback(error_callback)
-    
-    # Example tasks
-    tasks = [
-        {"device": "light.livingroom", "action": "set_brightness", "value": 40},
-        {"device": "light.bedroom", "action": "turn_on", "value": True},
-        {"device": "thermostat.main", "action": "set_temperature", "value": 22.5},
-        {"device": "switch.kitchen", "action": "toggle"},
-        {"device": "lock.front_door", "action": "lock", "value": True}
-    ]
-    
-    print(f"Executing {len(tasks)} example tasks...")
-    
-    # Execute tasks
-    for task in tasks:
-        print(f"\n📤 Executing: {task}")
-        success = await executor.execute(task)
-        if success:
-            print(f"   ✅ Published to MQTT successfully")
-        else:
-            print(f"   ❌ Execution failed")
-    
-    # Show statistics
-    print(f"\n📊 Executor Statistics:")
-    stats = executor.get_stats()
-    print(json.dumps(stats, indent=2))
-    
-    # Show execution history
-    print(f"\n📋 Recent Execution History:")
-    history = executor.get_execution_history(limit=3)
-    for record in history:
-        print(f"  {record['timestamp']}: {record['task']['device']} -> {record['status']}")
+    return agent
 
 
-async def test_batch_execution():
-    """Test batch execution functionality."""
-    print("\n=== Batch Execution Test ===")
+async def quick_device_command(
+    device_id: str,
+    action: str,
+    broker_host: str = "localhost",
+    **kwargs
+) -> bool:
+    """
+    Execute a quick device command without managing agent lifecycle.
     
-    executor = ExecutorAgent()
+    Args:
+        device_id (str): Device ID (e.g., "light.living_room")
+        action (str): Action to perform (e.g., "turn_on", "set_brightness")
+        broker_host (str): MQTT broker hostname
+        **kwargs: Additional parameters for the command
     
-    # Batch of tasks
-    batch_tasks = [
-        {"device": "light.living_room", "action": "set_brightness", "value": 75},
-        {"device": "light.bedroom", "action": "set_color", "value": "#FF6B6B"},
-        {"device": "thermostat.main", "action": "set_temperature", "value": 24.0},
-        {"device": "fan.ceiling", "action": "set_speed", "value": 3}
-    ]
+    Returns:
+        bool: True if command was executed successfully
+    """
+    agent = ExecutorAgent(broker_host=broker_host)
     
-    print(f"Executing batch of {len(batch_tasks)} tasks...")
-    results = await executor.execute_batch(batch_tasks)
-    
-    print(f"\n📊 Batch Results:")
-    print(json.dumps(results, indent=2))
+    try:
+        if not await agent.connect():
+            return False
+        
+        task = {"device": device_id, "action": action}
+        task.update(kwargs)
+        
+        return await agent.execute(task)
+        
+    finally:
+        await agent.disconnect()
 
 
 if __name__ == "__main__":
-    # Run examples
-    print("Running ExecutorAgent examples...")
-    asyncio.run(example_usage())
+    # Example usage
+    async def main():
+        # Create and connect executor agent
+        agent = ExecutorAgent(broker_host="localhost", broker_port=1883)
+        await agent.connect()
+        
+        # Example tasks
+        tasks = [
+            {"device": "light.living_room", "action": "turn_on"},
+            {"device": "light.living_room", "action": "set_brightness", "value": 75},
+            {"device": "thermostat.main", "action": "set_temperature", "value": 22.0},
+            {"device": "lock.front_door", "action": "lock"}
+        ]
+        
+        # Execute tasks
+        for task in tasks:
+            success = await agent.execute(task)
+            print(f"Task {task}: {'✅' if success else '❌'}")
+        
+        # Disconnect
+        await agent.disconnect()
     
-    print("\n" + "="*50)
-    asyncio.run(test_batch_execution())
+    asyncio.run(main())

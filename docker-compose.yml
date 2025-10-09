@@ -1,5 +1,5 @@
 services:
-  # 🔹 MQTT Broker (Mosquitto with anonymous access for development)
+  # MQTT Broker
   mqtt-broker:
     image: eclipse-mosquitto:2.0
     container_name: homegenie-mqtt
@@ -7,100 +7,54 @@ services:
       - "1883:1883"
       - "9003:9001"
     volumes:
-      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - ./docker/mosquitto/data:/mosquitto/data
-      - ./docker/mosquitto/log:/mosquitto/log
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt-data:/mosquitto/data
+      - mqtt-logs:/mosquitto/log
     networks:
       - homegenie-net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "test", "-m", "test"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # 🔹 Redis (ContextStore + cache)
-  redis:
-    image: redis:7
-    container_name: homegenie-redis
-    ports:
-      - "6380:6379"  # mapped to avoid conflict with local redis
-    volumes:
-      - redis-data:/data
-    networks:
-      - homegenie-net
-    restart: unless-stopped
-
-  # 🔹 PostgreSQL (User prefs, history)
-  postgres:
-    image: postgres:15
-    container_name: homegenie-postgres
-    ports:
-      - "5433:5432"  # mapped to avoid conflict with local postgres
-    environment:
-      - POSTGRES_USER=homegenie
-      - POSTGRES_PASSWORD=strongpassword
-      - POSTGRES_DB=homegenie
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - homegenie-net
-    restart: unless-stopped
-
-  # 🔹 Device Simulator
-  device-simulator:
+  # HomeGenie Unified Application
+  homegenie:
     build:
       context: .
-      dockerfile: docker/simulators/Dockerfile
-    container_name: homegenie-simulator
-    depends_on:
-      - mqtt-broker
+      dockerfile: Dockerfile.unified
+    container_name: homegenie-app
+    ports:
+      - "8080:8000"   # API
+      - "3000:3000"   # Web UI
     environment:
       - MQTT_BROKER_HOST=mqtt-broker
       - MQTT_BROKER_PORT=1883
-      - SIMULATOR_DEVICES=light,thermostat,lock,media,sensor
-    networks:
-      - homegenie-net
-    restart: unless-stopped
-    volumes:
-      - ./docker/simulators/devices.json:/app/config/devices.json
-
-  # 🔹 API + Agents Backend (FastAPI + Agents)
-  api-backend:
-    build:
-      context: .
-      dockerfile: docker/backend/Dockerfile
-    container_name: homegenie-api
-    ports:
-      - "8080:8000"  # expose API
-    environment:
-      - MQTT_BROKER_HOST=mqtt-broker
-      - MQTT_BROKER_PORT=1883
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://homegenie:strongpassword@postgres:5432/homegenie
+      - LOG_LEVEL=INFO
       - API_HOST=0.0.0.0
       - API_PORT=8000
     depends_on:
-      - mqtt-broker
-      - redis
-      - postgres
+      mqtt-broker:
+        condition: service_healthy
     networks:
       - homegenie-net
     restart: unless-stopped
-
-  # 🔹 Flutter Web App (Frontend)
-  web-app:
-    build:
-      context: .
-      dockerfile: docker/frontend/Dockerfile
-    container_name: homegenie-webapp
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api-backend
-    networks:
-      - homegenie-net
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./logs:/app/logs
 
 networks:
   homegenie-net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
-  redis-data:
-  pgdata:
+  mqtt-data:
+  mqtt-logs:
