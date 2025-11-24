@@ -10,7 +10,7 @@ from datetime import datetime
 from src.simulators.device_simulator import DeviceSimulator
 
 
-async def test_device_simulation_logic():
+async def run_device_simulation_logic():
     """Test the device simulation logic without requiring MQTT broker."""
     print("🧪 DEVICE SIMULATOR - MANUAL TEST")
     print("="*50)
@@ -179,8 +179,8 @@ if __name__ == "__main__":
     print("This test runs the simulation logic without requiring MQTT broker")
     print()
     
-    # Run the test
-    asyncio.run(test_device_simulation_logic())
+    # Run the demo
+    asyncio.run(run_device_simulation_logic())
     
     # Show command format examples
     demonstrate_command_formats()

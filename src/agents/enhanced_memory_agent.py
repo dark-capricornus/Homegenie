@@ -23,6 +23,7 @@ from collections import defaultdict, Counter
 from dataclasses import dataclass
 import statistics
 from enum import Enum
+from src.core import db_v2
 
 
 class InteractionType(Enum):
@@ -142,6 +143,13 @@ class EnhancedMemoryAgent:
             del self._analytics_cache[user_id]
         
         logging.debug(f"Added {entry_type} entry for user {user_id} with learning")
+
+        # Persist key events to Postgres asynchronously; best-effort, do not block
+        try:
+            asyncio.create_task(db_v2.save_memory_entry(user_id, entry_type, data))
+        except Exception:
+            # swallowing persistence errors to keep runtime stable
+            logging.debug("Failed to schedule persistence for memory entry")
     
     def _update_learning_data(self, user_id: str, entry_type: str, data: Dict[str, Any], timestamp: datetime):
         """Update various learning data structures"""

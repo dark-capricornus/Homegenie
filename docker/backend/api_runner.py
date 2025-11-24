@@ -45,10 +45,40 @@ class HomeGenieBackend:
         # Configure MQTT settings for the application
         os.environ['HOMEGENIE_MQTT_HOST'] = self.mqtt_broker_host
         os.environ['HOMEGENIE_MQTT_PORT'] = str(self.mqtt_broker_port)
-        
+        # Log high-level startup info
         logger.info("🏠 HomeGenie Backend initialized")
         logger.info(f"🌐 API Server: {self.host}:{self.port}")
         logger.info(f"📡 MQTT Broker: {self.mqtt_broker_host}:{self.mqtt_broker_port}")
+
+        # Log feature flags and key settings (masked) for easier debugging
+        try:
+            # Import flags and settings from application code (safe import)
+            from src.core.feature_flags import flags as core_flags
+            from src.core.settings_v2 import settings_v2 as core_settings
+
+            try:
+                # flags may be a dataclass-like object
+                enabled = [k for k, v in vars(core_flags).items() if k.isupper() and v]
+            except Exception:
+                enabled = []
+
+            def _mask_postgres(url: str | None) -> str | None:
+                if not url:
+                    return None
+                try:
+                    if '://' in url and '@' in url:
+                        proto, rest = url.split('://', 1)
+                        creds, after = rest.split('@', 1)
+                        return f"{proto}://<redacted>@{after}"
+                    return url
+                except Exception:
+                    return '<invalid-postgres-url>'
+
+            masked_pg = _mask_postgres(getattr(core_settings, 'POSTGRES_URL', None))
+            logger.info(f"Feature flags enabled (container): {enabled}")
+            logger.info(f"Settings summary (container): POSTGRES_URL={masked_pg}")
+        except Exception as exc:  # pragma: no cover - non-fatal logging
+            logger.debug(f"Could not log feature flags/settings at container init: {exc}")
     
     async def run_server(self):
         """Run the FastAPI server with all agents."""

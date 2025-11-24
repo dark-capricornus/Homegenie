@@ -33,8 +33,12 @@ except ImportError:
 from src.core.context_store import ContextStore
 from src.agents.sensor_agent import SensorAgent
 from src.agents.executor_agent import ExecutorAgent
-# from src.agents.voice_agent import VoiceAgent  # Temporarily disabled for Docker
 from src.agents.enhanced_memory_agent import EnhancedMemoryAgent
+from src.agents.planner_agent import PlannerAgent
+from src.agents.scheduler_agent import SchedulerAgent
+from src.core.feature_flags import flags
+from dataclasses import asdict
+from src.core.settings_v2 import settings_v2
 
 
 # Configure logging
@@ -300,8 +304,9 @@ logger.info(f"🔧 Created executor agent with MQTT broker: {mqtt_broker_host}")
 
 user_prefs = UserPreferences()
 memory_agent = EnhancedMemoryAgent(context_store=context_store)
-planner = Planner(context_store, user_prefs)
+planner_agent = PlannerAgent(context_store=context_store, memory_fetcher=memory_agent.get_history)
 scheduler = Scheduler(context_store)
+scheduler_agent = SchedulerAgent(loop=asyncio.get_event_loop(), executor=None)
 sensor_agent = None  # Will be initialized in lifespan
 voice_agent = None  # Will be initialized in lifespan
 
@@ -311,6 +316,35 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown."""
     # Startup
     logger.info("🚀 Starting Home Automation API Server...")
+    # Log feature flags and key settings (mask secrets)
+    try:
+        flags_dict = asdict(flags)
+    except Exception:
+        # Fallback if flags is not a dataclass instance
+        flags_dict = {k: getattr(flags, k) for k in dir(flags) if k.isupper()}
+
+    def _mask_postgres(url: str | None) -> str | None:
+        if not url:
+            return None
+        try:
+            if '://' in url and '@' in url:
+                proto, rest = url.split('://', 1)
+                creds, after = rest.split('@', 1)
+                return f"{proto}://<redacted>@{after}"
+            return url
+        except Exception:
+            return '<invalid-postgres-url>'
+
+    settings_summary = {
+        'API_HOST': getattr(settings_v2, 'API_HOST', None),
+        'API_PORT': getattr(settings_v2, 'API_PORT', None),
+        'POSTGRES_URL': _mask_postgres(getattr(settings_v2, 'POSTGRES_URL', None)),
+        'ENABLE_POSTGRES_MIGRATION': getattr(settings_v2, 'ENABLE_POSTGRES_MIGRATION', False)
+    }
+
+    enabled_flags = [k for k, v in flags_dict.items() if v]
+    logger.info(f"Feature flags enabled: {enabled_flags}")
+    logger.info(f"Settings summary: {settings_summary}")
     
     # Initialize sensor agent in background
     global sensor_agent, voice_agent
@@ -332,7 +366,7 @@ async def lifespan(app: FastAPI):
             """Wrapper for voice agent goal processing"""
             try:
                 # Use a default user for voice commands
-                result = asyncio.create_task(planner.plan_goal("voice_user", goal))
+                result = asyncio.create_task(planner_agent.plan(goal, "voice_user"))
                 # Note: This is a simplified approach - in production you'd handle async properly
                 return {"success": True, "message": f"Voice command processed: {goal}"}
             except Exception as e:
@@ -352,6 +386,49 @@ async def lifespan(app: FastAPI):
     
     # Start sensor monitoring in background task
     sensor_task = asyncio.create_task(start_sensor_monitoring())
+
+    # Start scheduler agent and wire executor
+    try:
+        async def _job_executor(job_row):
+            # job_row.data expected to contain a `task` dict for ExecutorAgent
+            try:
+                logger.info(f"_job_executor invoked for job {getattr(job_row, 'id', '?')}; executor_agent id={id(executor_agent)} has_execute={hasattr(executor_agent, 'execute')}")
+                task = (job_row.data or {}).get('task')
+                if task:
+                    # ensure executor_agent is connected
+                    if not executor_agent._connected:
+                        await executor_agent.connect()
+                    await executor_agent.execute(task)
+            except Exception as e:
+                logger.error(f"Error executing scheduled job {getattr(job_row, 'id', '?')}: {e}")
+
+        scheduler_agent.executor = _job_executor
+        # Log executor identity for debugging (helps tests that patch executor_agent)
+        try:
+            logger.info(f"Scheduler executor assigned. executor_agent id={id(executor_agent)} has_execute={hasattr(executor_agent, 'execute')}")
+        except Exception:
+            pass
+        await scheduler_agent.start()
+    except Exception as e:
+        logger.warning(f"Could not start scheduler_agent: {e}")
+
+    # Start periodic context snapshot task if persistence enabled
+    snapshot_task = None
+    try:
+        from src.core import db_v2
+        interval = int(getattr(settings_v2, 'CONTEXT_SNAPSHOT_INTERVAL_SECONDS', os.getenv('CONTEXT_SNAPSHOT_INTERVAL_SECONDS', '0')) or 0)
+        if settings_v2.ENABLE_POSTGRES_MIGRATION and settings_v2.POSTGRES_URL and interval > 0:
+            async def _snapshot_loop():
+                while True:
+                    try:
+                        await db_v2.save_context_snapshot(context_store)
+                    except Exception as e:
+                        logger.warning(f"Failed to save context snapshot: {e}")
+                    await asyncio.sleep(interval)
+
+            snapshot_task = asyncio.create_task(_snapshot_loop())
+    except Exception as e:
+        logger.debug(f"Snapshot task not started: {e}")
     
     logger.info("✅ Home Automation API Server started")
     
@@ -371,6 +448,19 @@ async def lifespan(app: FastAPI):
         await sensor_task
     except asyncio.CancelledError:
         pass
+    # Stop scheduler agent
+    try:
+        await scheduler_agent.stop()
+    except Exception:
+        pass
+
+    # Cancel snapshot task
+    if 'snapshot_task' in locals() and snapshot_task:
+        snapshot_task.cancel()
+        try:
+            await snapshot_task
+        except asyncio.CancelledError:
+            pass
     
     logger.info("✅ Home Automation API Server stopped")
 
@@ -428,6 +518,23 @@ class HistoryResponse(BaseModel):
     total_entries: int
 
 
+class ScheduleRequest(BaseModel):
+    name: Optional[str] = "unnamed"
+    cron: Optional[str] = None
+    next_run: Optional[str] = None  # ISO timestamp
+    delay_seconds: Optional[int] = None
+    data: Optional[Dict[str, Any]] = {}
+
+
+class ScheduleResponse(BaseModel):
+    id: int
+    name: str
+    cron: Optional[str]
+    next_run: Optional[str]
+    enabled: bool
+    data: Dict[str, Any]
+
+
 # API Endpoints
 
 @app.get("/")
@@ -472,7 +579,7 @@ async def process_goal(
         })
         
         # Step 1: Plan the goal
-        planned_tasks = await planner.plan_goal(user_id, goal)
+        planned_tasks = await planner_agent.plan(goal, user_id)
         
         # Step 2: Schedule the tasks
         scheduled_tasks = await scheduler.schedule_tasks(planned_tasks)
@@ -863,7 +970,7 @@ async def execute_suggestion_action(user_id: str, request: SuggestionActionReque
                 goal = f"{action_type} {device}"
                 
                 # Process through planner
-                tasks = await planner.plan_goal(user_id, goal)
+                tasks = await planner_agent.plan(goal, user_id)
                 
                 if tasks:
                     # Execute the tasks
@@ -1298,6 +1405,66 @@ async def batch_device_control(request: BatchDeviceRequest):
         raise HTTPException(status_code=500, detail=f"Error in batch control: {e}")
 
 
+@app.post("/schedules", response_model=Dict[str, Any])
+async def create_schedule(request: ScheduleRequest):
+    """Create and persist a schedule job. Returns created job id and details."""
+    try:
+        job = {
+            "name": request.name,
+            "cron": request.cron,
+            "next_run": request.next_run,
+            "data": request.data or {}
+        }
+        # If delay_seconds provided, include in payload data for SchedulerAgent
+        if request.delay_seconds:
+            job.setdefault("data", {})["delay_seconds"] = int(request.delay_seconds)
+
+        job_id = await scheduler_agent.schedule_job(job)
+        return {"id": job_id, "status": "created"}
+    except Exception as e:
+        logger.error(f"Error creating schedule: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating schedule: {e}")
+
+
+@app.get("/schedules")
+async def list_schedules(user_id: Optional[str] = Query(None, description="Filter schedules by user_id")):
+    """List persisted schedules. Optionally filter by user_id present in job.data.
+
+    By default, only enabled schedules are returned so DELETE (disable) removes
+    them from the active list.
+    """
+    try:
+        rows = await scheduler_agent.list_jobs(user_id=user_id)
+        out = []
+        for r in rows:
+            # Only include enabled jobs in the active list
+            if getattr(r, "enabled", True) is not True:
+                continue
+            try:
+                # Use Pydantic v2 API for model serialization where available
+                if hasattr(r, 'model_dump'):
+                    out.append(r.model_dump())
+                else:
+                    out.append(r.__dict__ if hasattr(r, '__dict__') else {k: getattr(r, k) for k in dir(r) if not k.startswith("_")})
+            except Exception:
+                out.append({k: getattr(r, k) for k in dir(r) if not k.startswith("_")})
+        return {"schedules": out, "total": len(out)}
+    except Exception as e:
+        logger.error(f"Error listing schedules: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing schedules: {e}")
+
+
+@app.delete("/schedules/{job_id}")
+async def delete_schedule(job_id: int):
+    """Cancel and disable a persisted schedule job."""
+    try:
+        success = await scheduler_agent.cancel_job(int(job_id))
+        return {"id": job_id, "cancelled": bool(success)}
+    except Exception as e:
+        logger.error(f"Error deleting schedule {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting schedule: {e}")
+
+
 if __name__ == "__main__":
     print("🏠 HOME AUTOMATION API SERVER")
     print("="*40)
@@ -1313,3 +1480,14 @@ if __name__ == "__main__":
         reload=True,
         log_level="info"
     )
+
+
+# Conditionally include v2 migration router (feature-flagged)
+try:
+    if flags.ENABLE_POSTGRES_MIGRATION:
+        from src.api.migration_v2 import router as migration_router
+
+        app.include_router(migration_router)
+        logger.info("✅ Postgres migration endpoints enabled (v2)")
+except Exception as exc:  # pragma: no cover - safe fail
+    logger.warning(f"Could not include migration_v2 router: {exc}")

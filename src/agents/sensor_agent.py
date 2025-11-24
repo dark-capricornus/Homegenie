@@ -97,12 +97,12 @@ class SensorAgent:
     def _on_connect(self, client, userdata, flags, rc):
         """Callback for when the client receives a CONNACK response from the server."""
         if rc == 0:
-            logger.info(f"✅ Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
+            logger.info(f" Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
             # Subscribe to the topic pattern
             client.subscribe(self.topic_pattern)
-            logger.info(f"🎯 Subscribed to topic pattern: {self.topic_pattern}")
+            logger.info(f"Subscribed to topic pattern: {self.topic_pattern}")
         else:
-            logger.error(f"❌ Failed to connect, return code {rc}")
+            logger.error(f"Failed to connect, return code {rc}")
             if self._error_callback:
                 self._error_callback("connection_failed", Exception(f"Connection failed with code {rc}"))
     
@@ -112,13 +112,13 @@ class SensorAgent:
             topic = msg.topic
             payload = msg.payload.decode('utf-8')
             
-            logger.debug(f"📨 Received message on topic {topic}: {payload}")
+            logger.debug(f"Received message on topic {topic}: {payload}")
             
-            # Parse JSON payload
+            
             try:
                 parsed_data = json.loads(payload)
             except json.JSONDecodeError as e:
-                logger.warning(f"⚠️ Invalid JSON in message from {topic}: {e}")
+                logger.warning(f"Invalid JSON in message from {topic}: {e}")
                 if self._error_callback:
                     self._error_callback("json_decode_error", e)
                 return
@@ -129,7 +129,7 @@ class SensorAgent:
             
             # Update context store
             self.context_store.update_state(topic, parsed_data)
-            logger.debug(f"📋 Updated state for {topic}")
+            logger.debug(f"Updated state for {topic}")
             
             # Call custom message callback if set
             if self._message_callback:
@@ -146,13 +146,13 @@ class SensorAgent:
     def _on_disconnect(self, client, userdata, rc):
         """Callback for when the client disconnects from the broker."""
         if rc != 0:
-            logger.warning(f"⚠️ Unexpected disconnection from broker (code {rc})")
+            logger.warning(f"Unexpected disconnection from broker (code {rc})")
         else:
-            logger.info("📡 Disconnected from MQTT broker")
+            logger.info("Disconnected from MQTT broker")
     
     def _on_subscribe(self, client, userdata, mid, granted_qos):
         """Callback for when the broker responds to a subscribe request."""
-        logger.info(f"✅ Successfully subscribed to {self.topic_pattern}")
+        logger.info(f"Successfully subscribed to {self.topic_pattern}")
     
     def _run_mqtt_loop(self):
         """Run the MQTT client loop in a separate thread."""
@@ -174,7 +174,7 @@ class SensorAgent:
             self._client.loop_forever()
             
         except Exception as e:
-            logger.error(f"❌ Error in MQTT loop: {e}")
+            logger.error(f"Error in MQTT loop: {e}")
             if self._error_callback:
                 self._error_callback("mqtt_loop_error", e)
     
@@ -183,25 +183,25 @@ class SensorAgent:
         Start the sensor agent asynchronously.
         """
         if self._running:
-            logger.warning("⚠️ SensorAgent is already running")
+            logger.warning("SensorAgent is already running")
             return
         
         self._running = True
-        logger.info("🚀 Starting SensorAgent...")
+        logger.info("Starting SensorAgent...")
         
         try:
             # Start MQTT client in a separate thread
             self._thread = threading.Thread(target=self._run_mqtt_loop, daemon=True)
             self._thread.start()
             
-            logger.info("✅ SensorAgent started successfully")
+            logger.info("SensorAgent started successfully")
             
             # Keep the async loop running
             while self._running:
                 await asyncio.sleep(1)
                 
         except Exception as e:
-            logger.error(f"❌ Error starting SensorAgent: {e}")
+            logger.error(f"Error starting SensorAgent: {e}")
             self._running = False
             if self._error_callback:
                 self._error_callback("start_error", e)
@@ -211,7 +211,7 @@ class SensorAgent:
         """
         Stop the sensor agent.
         """
-        logger.info("🛑 Stopping SensorAgent...")
+        logger.info("Stopping SensorAgent...")
         self._running = False
         
         if self._client:
@@ -221,7 +221,7 @@ class SensorAgent:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5)
         
-        logger.info("✅ SensorAgent stopped")
+        logger.info("SensorAgent stopped")
     
     def is_running(self) -> bool:
         """

@@ -1,317 +1,219 @@
-# HomeGenie Smart Home Automation - Run Instructions
+## Running the project (developer checklist)
 
-## 🏠 Overview
-HomeGenie is a comprehensive smart home automation system with Flutter mobile app, FastAPI backend, MQTT device simulation, and real-time device management.
-
-**Current Status: ✅ WORKING**
-- Network IP: `10.132.71.35`
-- API Endpoint: `http://<IP_ADDR>`
-- Web Frontend: `http://10.132.71.35:3000` (nginx issues - use API directly)
-- MQTT Broker: `10.132.71.35:1883`
-- Device Count: 7 simulated devices (lights, thermostat, sensors, locks)
-
----
-
-## 🚀 Quick Start
+This file explains the common developer workflows for the HomeGenie project: running the services with Docker Compose, running a development server, running tests locally, and common troubleshooting steps (especially for Windows/Python devs).
 
 ### Prerequisites
-- Docker and Docker Compose installed
-- Network connectivity on port 8080, 3000, and 1883
 
-### 1. Start the System
-```bash
-cd /home/harish/Desktop/Homegenie
-docker-compose up --build -d
-```
+- Docker Desktop (running)
+- docker-compose (bundled with Docker Desktop)
+- Python 3.11/3.12 (local venv for running tests or scripts)
+- (Windows) PowerShell / cmd.exe as appropriate
 
-### 2. Verify System Health
-```bash
-# Check containers are running
-docker ps
-
-# Test API health
-curl http://<IP_ADDR>/health
-
-# Check device count
-curl http://<IP_ADDR>/devices
-```
-
-### 3. Access from Mobile/Other Devices
-- **API Base URL**: `http://<IP_ADDR>`
-- **Flutter App**: Update `lib/main.dart` to use IP `<IP_ADDR>`
+If you're on Windows and plan to install DB drivers locally, prefer `psycopg[binary]` to avoid having to compile `asyncpg` with MSVC.
 
 ---
 
-## 📱 Flutter Mobile App Setup
+## Start the full stack (recommended for integration testing)
 
-### Update Network Configuration
-Edit `/home/harish/Desktop/Homegenie/frontend/lib/main.dart`:
+From the repository root (example path: `d:\Homegenie`):
 
-```dart
-// Find and update the API base URL
-static const String baseUrl = 'http://<IP_ADDR>';
+```cmd
+docker-compose -f d:\Homegenie\docker-compose.yml up -d --build
 ```
 
-### Run Flutter App
-```bash
-cd /home/harish/Desktop/Homegenie/frontend
-flutter run
+This will bring up the following services:
+- `globalone` — Postgres (db)
+- `homegenie-app` — API, nginx, simulator (unified container)
+- `homegenie-mqtt` — Mosquitto broker
+
+Verify containers are healthy:
+
+```cmd
+docker-compose -f d:\Homegenie\docker-compose.yml ps
 ```
 
-### Development Mode (Hot Reload)
-```bash
-# Terminal 1: Keep containers running
-docker-compose up
+Check app logs (supervisor-managed logs):
 
-# Terminal 2: Flutter hot reload
-cd frontend
-flutter run --hot
+```cmd
+docker logs --tail 200 homegenie-app
+docker exec -it homegenie-app sh -c "cat /var/log/supervisor/api.log || echo 'no api.log'"
 ```
+
+Health endpoints:
+
+```cmd
+curl http://localhost:8000/health
+```
+
+Notes:
+- The container includes a frontend served by nginx on port `3000` and the API on `8000` (mapped to host ports). If nginx fails to start, check `docker/frontend/nginx.conf` or the supervisor logs.
 
 ---
 
-## 🔧 API Endpoints
+## Run a local development backend (fast reload)
 
-### Base URL: `http://<IP_ADDR>`
+There is a development service `homegenie-dev` available in `docker-compose.yml` that runs the API with `uvicorn --reload` and mounts the local `src/` code for live editing.
 
-### Core Endpoints
-- `GET /` - API information
-- `GET /health` - System health status
-- `GET /devices` - List all devices and states
-- `GET /state` - Complete system state
-- `GET /devices/{device_id}` - Get specific device status
+Start only the dev backend (and any dependent services):
 
-### Device Control
-- `POST /devices/control` - Direct device control
-- `POST /devices/{device_id}/toggle` - Toggle device on/off
-- `POST /devices/{device_id}/set?parameter=value` - Set device parameter
+```cmd
+docker-compose -f d:\Homegenie\docker-compose.yml up -d globalone homegenie-mqtt homegenie-dev
+```
 
-### Goal Processing (AI-driven)
-- `POST /goal/{user_id}?goal=<goal>` - Process natural language goals
-  - Examples: "goodnight", "movie time", "turn on lights"
+﻿# HomeGenie — Run Instructions (developer)
 
-### User Management
-- `POST /prefs/{user_id}?key=<key>&value=<value>` - Set user preferences
-- `GET /prefs/{user_id}` - Get user preferences
-- `GET /history/{user_id}` - Get user interaction history
+This file gives concise, step-by-step instructions to run HomeGenie locally for development and testing. The examples use Windows `cmd.exe` (adjust to PowerShell or bash as needed).
+
+## Prerequisites
+- Docker Desktop (with docker-compose)
+- Python 3.11+ (use a venv for running tests and scripts)
+- (Optional) Flutter SDK if working on the frontend
+
+Repository root (examples): `D:\Homegenie`
+
+## 1) Start full stack (Docker Compose)
+From repo root:
+
+```cmd
+docker-compose -f D:\Homegenie\docker-compose.yml up -d --build
+```
+
+Services started include:
+- `homegenie-mqtt` — Mosquitto MQTT broker
+- `globalone` — Postgres DB (used for integration/PoC)
+- `homegenie-app` / `homegenie-dev` — API + simulator (unified or dev image)
+
+Check status/logs:
+
+```cmd
+docker-compose -f D:\Homegenie\docker-compose.yml ps
+docker-compose -f D:\Homegenie\docker-compose.yml logs --tail=200 homegenie-app
+```
+
+API health (container exposes FastAPI on port 8000 by default; some compose mappings expose to host 8000/8080):
+
+```cmd
+curl http://localhost:8000/health
+```
+
+## 2) Run backend locally (no Docker) — quick dev loop
+
+Use the provided venv (recommended) or create a new one.
+
+Activate provided venv (Windows cmd):
+
+```cmd
+D:\Homegenie\env\Scripts\activate.bat
+```
+
+Or create a fresh venv:
+
+```cmd
+python -m venv .venv
+.venv\Scripts\activate.bat
+pip install -r config/requirements.txt
+```
+
+Run the API (from repo root) for local dev:
+
+```cmd
+uvicorn src.api.api_server:app --reload --port 8000
+```
+
+If you want the API to connect to a local MQTT broker, set these env vars (cmd):
+
+```cmd
+set HOMEGENIE_MQTT_HOST=localhost
+set HOMEGENIE_MQTT_PORT=1883
+```
+
+## 3) Run tests (focused / full)
+
+Activate the venv (see above) and run pytest. For a quick focused run (scheduler + DB tests):
+
+```cmd
+D:\Homegenie\env\Scripts\python.exe -m pytest -q tests/test_db_v2.py tests/test_schedules_api.py tests/test_scheduler_execution.py
+```
+
+To run the full test suite:
+
+```cmd
+pytest -q
+```
+
+Notes:
+- Some integration tests require a Postgres DB and/or a live MQTT broker. Those tests are marked and can be skipped by default. To enable integration tests, set environment variables like `POSTGRES_URL` and `RUN_INTEGRATION=1` and run pytest with `-m integration` or `-k integration` as configured.
+- On Windows, prefer `psycopg[binary]` if `asyncpg` wheels are not available.
+
+## 4) Database migrations (Alembic)
+
+The repo includes Alembic revisions for the DB PoC (SQLModel). To run migrations against a DB, set `POSTGRES_URL` and run:
+
+```cmd
+set POSTGRES_URL=postgresql+psycopg://homegenie:changeme@localhost:5432/homegenie_db
+alembic upgrade head
+```
+
+Alembic config uses `src/core/db_v2`/SQLModel models. If you run migrations inside Docker, ensure `POSTGRES_URL` matches the container networking.
+
+## 5) Device simulator & MQTT
+
+The device simulator publishes simulated device state to MQTT topics (topics under `home/...`). To run it locally without Docker, ensure a broker is available at `HOMEGENIE_MQTT_HOST`/`HOMEGENIE_MQTT_PORT`. Example (start Mosquitto via Docker):
+
+```cmd
+docker run -d --name homegenie-mosquitto -p 1883:1883 eclipse-mosquitto:2
+```
+
+Then run the simulator (from repo root):
+
+```cmd
+python -m src.simulators.device_simulator
+```
+
+Note: The executor publishes commands to `home/{device_type}/{location}/command`; the simulator subscribes to matching topics.
+
+## 6) Postgres PoC / snapshots
+
+- The DB PoC is feature-gated behind settings in `src.core.settings_v2` (e.g., `POSTGRES_URL` and `ENABLE_POSTGRES_MIGRATION`).
+- To enable periodic ContextStore snapshots, set `ENABLE_POSTGRES_MIGRATION=true` and configure `POSTGRES_URL` and `SNAPSHOT_INTERVAL_SECONDS` in settings or environment.
+
+Example (cmd):
+
+```cmd
+set POSTGRES_URL=postgresql+psycopg://homegenie:changeme@localhost:5432/homegenie_db
+set ENABLE_POSTGRES_MIGRATION=1
+set SNAPSHOT_INTERVAL_SECONDS=300
+```
+
+Then start the API so the snapshot loop runs as part of the FastAPI lifespan.
+
+## 7) Useful commands & troubleshooting
+
+Show all containers:
+
+```cmd
+docker-compose -f D:\Homegenie\docker-compose.yml ps
+```
+
+Show logs for API container:
+
+```cmd
+docker-compose -f D:\Homegenie\docker-compose.yml logs --tail=200 homegenie-app
+```
+
+Open a shell inside the app container:
+
+```cmd
+docker exec -it homegenie-app cmd
+```
+
+If the API fails to start or endpoints return errors, check `docker-compose logs` and the app-level logs under `/var/log/supervisor` inside the container.
+
+## 8) Next steps & automation (suggested)
+
+- If you prefer, I can add `scripts/dev_start.bat` and `scripts/dev_start.ps1` to wrap the common docker-compose and env var setup for Windows. Tell me which shell you prefer and I will add them.
+- If you want integration test helpers (start a temporary Mosquitto and Postgres for tests), I can add scripts and pytest fixtures to orchestrate them.
 
 ---
 
-## 🏡 Available Devices
-
-The system currently simulates 7 smart home devices:
-
-### Lights
-- `light.living_room` - Living room light (brightness, color)
-- `light.bedroom` - Bedroom light (brightness, color)  
-- `light.kitchen` - Kitchen light (brightness, color)
-
-### Climate
-- `thermostat.living_room` - Thermostat (temperature, mode)
-
-### Security
-- `lock.front_door` - Smart lock (locked/unlocked)
-
-### Sensors
-- `sensor.outdoor_temp` - Outdoor temperature sensor
-- `sensor.motion_living` - Living room motion sensor
-
----
-
-## 📊 Example API Calls
-
-### Check System Health
-```bash
-curl http://<IP_ADDR>/health
-```
-
-### Get All Devices
-```bash
-curl http://<IP_ADDR>/devices | python3 -m json.tool
-```
-
-### Control a Light
-```bash
-# Turn on living room light
-curl -X POST "http://<IP_ADDR>/devices/light.living_room/toggle"
-
-# Set brightness
-curl -X POST "http://<IP_ADDR>/devices/light.living_room/set?parameter=brightness&value=75"
-```
-
-### Process Natural Language Goal
-```bash
-# Goodnight routine
-curl -X POST "http://<IP_ADDR>/goal/user1?goal=goodnight"
-
-# Movie time
-curl -X POST "http://<IP_ADDR>/goal/user1?goal=movie time"
-```
-
----
-
-## 🐳 Docker Commands
-
-### View Logs
-```bash
-# All container logs
-docker-compose logs
-
-# API logs only
-docker-compose logs homegenie-app
-
-# MQTT broker logs
-docker-compose logs homegenie-mqtt
-```
-
-### Container Management
-```bash
-# Stop system
-docker-compose down
-
-# Rebuild and restart
-docker-compose up --build -d
-
-# Rebuild without cache
-docker-compose build --no-cache && docker-compose up -d
-```
-
-### Debug Container
-```bash
-# Execute shell in container
-docker exec -it homegenie-app /bin/bash
-
-# Check supervisor status
-docker exec homegenie-app supervisorctl status
-
-# View supervisor logs
-docker exec homegenie-app cat /var/log/supervisor/api.log
-```
-
----
-
-## 🔍 Troubleshooting
-
-### Container Issues
-1. **Containers not starting**: Check `docker-compose logs`
-2. **API not responding**: Verify port 8080 is available
-3. **MQTT connection issues**: Check port 1883 accessibility
-
-### Network Connectivity
-1. **API not accessible from other devices**: 
-   - Verify IP address: `ip addr show`
-   - Check firewall settings
-   - Ensure port 8080 is open
-
-2. **Flutter app can't connect**:
-   - Update `baseUrl` in Flutter app to `<IP_ADDR>`
-   - Check device is on same network
-
-### Performance Issues
-1. **Slow response**: Check container resource usage with `docker stats`
-2. **Memory issues**: Restart containers with `docker-compose restart`
-
----
-
-## 🏗️ System Architecture
-
-### Container Structure
-- **homegenie-app**: Unified container with API, simulator, and web frontend
-- **homegenie-mqtt**: Eclipse Mosquitto MQTT broker
-
-### Internal Services (in homegenie-app container)
-- **API Server**: FastAPI on port 8000 (mapped to 8080)
-- **Device Simulator**: Publishes device states via MQTT
-- **Sensor Agent**: Listens to MQTT and updates API state
-- **Web Frontend**: Nginx on port 3000 (nginx has issues, use API directly)
-
-### Data Flow
-```
-Device Simulator → MQTT Broker → Sensor Agent → Context Store → API → Flutter App
-```
-
----
-
-## 📝 Development Notes
-
-### Known Issues
-1. **Nginx Web Frontend**: Has configuration issues, use API endpoints directly
-2. **Device Control**: Executor agent needs paho-mqtt fix for device control commands
-3. **Web UI**: Flutter web build works, but nginx serving has problems
-
-### Working Features ✅
-- ✅ MQTT broker and device simulation
-- ✅ API server with all endpoints
-- ✅ Real-time device state updates
-- ✅ Network accessibility (<IP_ADDR>)
-- ✅ Flutter mobile app (with correct IP configuration)
-- ✅ Natural language goal processing
-- ✅ User preferences and history
-- ✅ Device discovery and state management
-
-### Future Improvements
-1. Fix executor agent to use paho-mqtt for device control
-2. Resolve nginx configuration for web frontend
-3. Add authentication and user management
-4. Implement device grouping and scenes
-5. Add voice control integration
-
----
-
-## 🎯 Testing Checklist
-
-### Basic Functionality
-- [ ] Containers start successfully: `docker ps`
-- [ ] API health check: `curl http://<IP_ADDR>/health`
-- [ ] Device discovery: `curl http://<IP_ADDR>/devices`
-- [ ] Flutter app connects and shows devices
-
-### Network Access
-- [ ] API accessible from other devices on network
-- [ ] Flutter app works on mobile devices
-- [ ] MQTT broker accessible for external clients
-
-### Advanced Features
-- [ ] Goal processing works: `curl -X POST "http://<IP_ADDR>/goal/test?goal=goodnight"`
-- [ ] Device state updates in real-time
-- [ ] User preferences save and load correctly
-
----
-
-## 🆘 Support
-
-### Log Locations
-- API logs: `/var/log/supervisor/api.log` (inside container)
-- Simulator logs: `/var/log/supervisor/simulator.log` (inside container)
-- Nginx logs: `/var/log/supervisor/nginx.log` (inside container)
-
-### Container Health
-```bash
-# Check all container status
-docker-compose ps
-
-# View container health
-docker inspect homegenie-app | grep Health -A 10
-```
-
-### Network Diagnostics
-```bash
-# Check which ports are open
-netstat -tlnp | grep -E '(8080|3000|1883)'
-
-# Test connectivity from another device
-curl -v http://<IP_ADDR>/health
-```
-
----
-
-## 🏆 Success Metrics
-
-**✅ System is working when:**
-- All containers show "healthy" status
-- API returns device count > 0
-- Flutter app successfully connects and displays devices
-- Real-time device state updates are visible
-- Network access works from other devices on `<IP_ADDR>`
-
-**Current Status: ✅ Core system functional with 7 devices accessible on network IP <IP_ADDR>**
+If you'd like a shorter or more detailed variant (for CI, for Docker-only runs, or for Windows PowerShell), tell me which target and I'll produce that version and optionally add helper scripts.

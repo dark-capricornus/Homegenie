@@ -63,15 +63,25 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
     // Don't start auto-refresh until API discovery is complete
   }
   
-  void _initializeBaseUrl() {
+  Future<void> _initializeBaseUrl() async {
     // Detect if running on mobile device
     const isWeb = kIsWeb;
     
     if (isWeb) {
-      // Web version - use localhost
-      baseUrl = 'http://localhost:8000';
-      _logger.info('Flutter running on: Web');
-      _logger.info('HomeGenie API URL: $baseUrl');
+      // Web version - probe common host ports so the app works whether the
+      // API is exposed on host:8080 (docker-compose default) or host:8000.
+      _logger.info('Flutter running on: Web - probing local API ports...');
+      final candidates = ['http://localhost:8080', 'http://localhost:8000'];
+      final found = await _findWorkingApiServer(candidates);
+      if (found.isNotEmpty) {
+        baseUrl = found;
+        _logger.info('HomeGenie API URL: $baseUrl');
+      } else {
+        // Fallback to the docker-mapped port (most common)
+        baseUrl = 'http://localhost:8080';
+        _logger.warning('Could not find API on localhost: probing ports, falling back to $baseUrl');
+      }
+
       _fetchDeviceStates();
       _startAutoRefresh(); // Start auto-refresh for web
     } else {

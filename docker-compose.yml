@@ -27,26 +27,86 @@ services:
     container_name: homegenie-app
     ports:
       - "8080:8000"   # API
-      - "3000:3000"   # Web UI
+      - "8000:8000"   # direct app port
+      - "3000:3000"   # web UI
     environment:
       - MQTT_BROKER_HOST=mqtt-broker
       - MQTT_BROKER_PORT=1883
       - LOG_LEVEL=INFO
       - API_HOST=0.0.0.0
       - API_PORT=8000
+
+      # PostgreSQL configuration
+      - POSTGRES_USER=homegenie
+      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_DB=homegenie_db
+      - POSTGRES_HOST=globalone
+      - POSTGRES_PORT=5432
+      - POSTGRES_URL=postgresql+psycopg://homegenie:changeme@globalone:5432/homegenie_db
+
+      - ENABLE_POSTGRES_MIGRATION=true
+
     depends_on:
-      mqtt-broker:
-        condition: service_healthy
+      - mqtt-broker
+      - globalone
+
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - homegenie-net
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  globalone:
+    image: postgres:15
+    container_name: globalone
+    environment:
+      - POSTGRES_USER=homegenie
+      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_DB=homegenie_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
     networks:
       - homegenie-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "pg_isready -U homegenie -d homegenie_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Dev mode
+  homegenie-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.unified
+    container_name: homegenie-app-dev
+    ports:
+      - "8081:8000"
+    environment:
+      - MQTT_BROKER_HOST=mqtt-broker
+      - MQTT_BROKER_PORT=1883
+      - LOG_LEVEL=DEBUG
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - POSTGRES_USER=homegenie
+      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_DB=homegenie_db
+      - POSTGRES_HOST=globalone
+      - POSTGRES_PORT=5432
+      - POSTGRES_URL=postgresql+psycopg://homegenie:changeme@globalone:5432/homegenie_db
+      - ENABLE_POSTGRES_MIGRATION=true
     volumes:
-      - ./logs:/app/logs
+      - ./:/app:cached
+    depends_on:
+      - mqtt-broker
+      - globalone
+    command: ["uvicorn", "src.api.api_server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    networks:
+      - homegenie-net
+    restart: unless-stopped
 
 networks:
   homegenie-net:

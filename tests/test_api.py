@@ -9,8 +9,9 @@ import asyncio
 import json
 import sys
 import time
+import os
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Try to import httpx for HTTP testing, fallback to manual testing if not available
 try:
@@ -22,11 +23,27 @@ except ImportError:
 
 
 class APITester:
-    """Test the FastAPI home automation endpoints."""
-    
-    def __init__(self, base_url: str = "http://localhost:8000"):
-        self.base_url = base_url
-        self.client = httpx.AsyncClient(base_url=base_url) if HTTPX_AVAILABLE else None
+    """Test the FastAPI home automation endpoints.
+
+    The tester will pick the API base URL from the environment variable
+    `API_BASE_URL` if set, otherwise it will construct one using
+    `API_HOST`/`API_PORT` environment variables (falling back to
+    http://localhost:8080 which matches the Docker setup).
+    """
+
+    def __init__(self, base_url: Optional[str] = None):
+        # Allow explicit override, otherwise read from env vars
+        env_base = os.getenv("API_BASE_URL")
+        if base_url:
+            self.base_url = base_url
+        elif env_base:
+            self.base_url = env_base
+        else:
+            api_host = os.getenv("API_HOST", "localhost")
+            api_port = os.getenv("API_PORT", "8080")
+            self.base_url = f"http://{api_host}:{api_port}"
+
+        self.client = httpx.AsyncClient(base_url=self.base_url) if HTTPX_AVAILABLE else None
     
     async def test_root_endpoint(self) -> Dict[str, Any]:
         """Test the root endpoint."""
