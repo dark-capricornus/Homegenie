@@ -5,6 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+import 'package:homegenie_app/network/api_locator.dart';
+import 'package:homegenie_app/screens/server_settings.dart';
+import 'package:homegenie_app/network/mqtt_service.dart';
+
+enum ConnectionStatus { unknown, connected, disconnected }
 
 final Logger _logger = Logger('HomeGenieApp');
 
@@ -55,6 +60,11 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
   bool isProcessingGoal = false;
   String statusMessage = '';
   Timer? _refreshTimer;
+  Timer? _statusTimer;
+  DateTime? _lastStatusCheck;
+  ConnectionStatus connectionStatus = ConnectionStatus.unknown;
+  MqttService? _mqttService;
+  bool _mqttConnected = false;
 
   @override
   void initState() {
@@ -64,161 +74,78 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
   }
   
   Future<void> _initializeBaseUrl() async {
-    // Detect if running on mobile device
-    const isWeb = kIsWeb;
-    
-    if (isWeb) {
-      // Web version - probe common host ports so the app works whether the
-      // API is exposed on host:8080 (docker-compose default) or host:8000.
-      _logger.info('Flutter running on: Web - probing local API ports...');
-      final candidates = ['http://localhost:8080', 'http://localhost:8000'];
-      final found = await _findWorkingApiServer(candidates);
-      if (found.isNotEmpty) {
-        baseUrl = found;
-        _logger.info('HomeGenie API URL: $baseUrl');
-      } else {
-        // Fallback to the docker-mapped port (most common)
-        baseUrl = 'http://localhost:8080';
-        _logger.warning('Could not find API on localhost: probing ports, falling back to $baseUrl');
-      }
-
-      _fetchDeviceStates();
-      _startAutoRefresh(); // Start auto-refresh for web
-    } else {
-      // Mobile version - discover API server dynamically
-      _logger.info('Flutter running on: Mobile - discovering API server...');
-      _discoverApiServer();
-    }
-  }
-
-    // Dynamic API server discovery for mobile devices
-  Future<void> _discoverApiServer() async {
+    // Use ApiLocator (handles cached, override, emulator, LAN scan, cloud)
+    _logger.info('Initializing API discovery via ApiLocator...');
     setState(() {
       statusMessage = 'Discovering HomeGenie server...';
       isLoading = true;
     });
 
-    // List of potential API endpoints to try
-    final List<String> candidateUrls = [];
-    
     try {
-      // Add common network ranges and development IPs
-      final networkRanges = [
-        '192.168.1',
-        '192.168.0', 
-        '10.0.0',
-        '10.132.71',  // Your current network
-        '172.16.0',
-        '172.20.10', // iOS hotspot range
-        '192.168.43', // Android hotspot range
-      ];
-      
-      // Common host IPs to check in each range
-      final commonHosts = [1, 2, 100, 101, 102, 103, 104, 105, 110, 200, 254];
-      
-      for (final range in networkRanges) {
-        for (final host in commonHosts) {
-          candidateUrls.add('http://$range.$host:8080');  // Docker port first
-          candidateUrls.add('http://$range.$host:8000');  // Standard port
-        }
-      }
-      
-      // Add some specific common development IPs - prioritize current network
-      final additionalIps = [
-        'http://10.132.71.35:8080',  // Your current IP with Docker port
-        'http://10.132.71.35:8000',  // Your current IP alternate port
-        'http://localhost:8080',    // Fallback Docker port
-        'http://localhost:8000',    // Fallback standard port
-      ];
-      candidateUrls.addAll(additionalIps);
-      
-      _logger.info('Checking ${candidateUrls.length} potential API endpoints...');
-      
-      // Try to find working API server
-      baseUrl = await _findWorkingApiServer(candidateUrls);
-      
-      if (baseUrl.isNotEmpty) {
-        _logger.info('Found HomeGenie API at: $baseUrl');
-        setState(() {
-          statusMessage = 'Connected to HomeGenie server';
-        });
-        _fetchDeviceStates();
-        _startAutoRefresh(); // Start auto-refresh only after successful discovery
-      } else {
-        setState(() {
-          statusMessage = 'Could not find HomeGenie server on network';
-          isLoading = false;
-        });
-      }
-      
-    } catch (e) {
-      _logger.warning('Network discovery error: $e');
+      final found = await ApiLocator.getBaseUrl();
+      baseUrl = found;
+      _logger.info('HomeGenie API URL (ApiLocator): $baseUrl');
       setState(() {
-        statusMessage = 'Network discovery failed: $e';
+        statusMessage = 'Connected to HomeGenie server';
+      });
+
+      await _fetchDeviceStates();
+      _startAutoRefresh();
+      _startStatusTicker();
+      // Start MQTT connection using universal selection logic in MqttService
+      _mqttService = MqttService();
+      await _mqttService!.connect();
+      _mqttService!.connectedStream.listen((connected) {
+        setState(() {
+          _mqttConnected = connected;
+        });
+      });
+    } catch (e) {
+      _logger.warning('ApiLocator discovery failed: $e');
+      setState(() {
+        statusMessage = 'Could not find HomeGenie server';
+      });
+    } finally {
+      setState(() {
         isLoading = false;
       });
     }
   }
+
   
-  // Find working API server from candidate URLs
-  Future<String> _findWorkingApiServer(List<String> candidates) async {
-    _logger.info('Testing ${candidates.length} potential API endpoints...');
-    
-    // Test candidates in small batches to avoid network flooding
-    const batchSize = 5;
-    
-    for (int i = 0; i < candidates.length; i += batchSize) {
-      final batch = candidates.skip(i).take(batchSize).toList();
-      final futures = batch.map((url) => _testApiEndpoint(url)).toList();
-      
-      // Wait for this batch with a timeout
-      final results = await Future.wait(futures, eagerError: false);
-      
-      // Check if any URL in this batch worked
-      for (final url in results) {
-        if (url.isNotEmpty) {
-          return url;
-        }
-      }
-      
-      // Update progress
-      setState(() {
-        statusMessage = 'Scanning network... ${i + batch.length}/${candidates.length}';
-      });
-      
-      // Small delay between batches to be network-friendly
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-    
-    return '';
-  }
-  
-  // Test if an API endpoint is working
-  Future<String> _testApiEndpoint(String url) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$url/devices'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 1)); // Faster timeout
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data is Map && (data.containsKey('devices') || data.isNotEmpty)) {
-          _logger.info('✅ Found API server at: $url');
-          baseUrl = url;
-          return url;
-        }
-      }
-    } catch (e) {
-      // Silently fail - this is expected for most IPs
-    }
-    return '';
-  }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _statusTimer?.cancel();
     super.dispose();
+  }
+
+  void _startStatusTicker() {
+    // Do not check more often than once every 10 seconds
+    _statusTimer?.cancel();
+    _statusTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      await _checkConnection();
+    });
+    // Kick off an immediate check
+    _checkConnection();
+  }
+
+  Future<void> _checkConnection() async {
+    // Throttle checks using last check timestamp
+    final now = DateTime.now();
+    if (_lastStatusCheck != null && now.difference(_lastStatusCheck!).inSeconds < 10) return;
+    _lastStatusCheck = now;
+
+    if (baseUrl.isEmpty) {
+      setState(() => connectionStatus = ConnectionStatus.disconnected);
+      return;
+    }
+
+    final ok = await ApiLocator.testUrl(baseUrl);
+    setState(() {
+      connectionStatus = ok ? ConnectionStatus.connected : ConnectionStatus.disconnected;
+    });
   }
 
   void _startAutoRefresh() {
@@ -405,6 +332,25 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
                 tooltip: 'Voice Control',
               ),
               IconButton(
+                onPressed: () async {
+                  // Open server settings and refresh discovery on return
+                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ServerSettingsScreen()));
+                  final newBase = await ApiLocator.getBaseUrl();
+                  setState(() {
+                    baseUrl = newBase;
+                  });
+                  await _fetchDeviceStates();
+                  // Reconnect MQTT to pick up any manual overrides
+                  try {
+                    await _mqttService?.connect();
+                  } catch (e) {
+                    _logger.warning('MQTT reconnect after settings failed: $e');
+                  }
+                },
+                icon: const Icon(Icons.settings, color: Colors.white),
+                tooltip: 'Server Settings',
+              ),
+              IconButton(
                 onPressed: _fetchDeviceStates,
                 icon: isLoading
                     ? const SizedBox(
@@ -458,12 +404,40 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
                             color: Colors.black87,
                           ),
                         ),
-                        Text(
-                          'API: $baseUrl',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
+                        Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: connectionStatus == ConnectionStatus.connected
+                                    ? Colors.green
+                                    : (connectionStatus == ConnectionStatus.unknown ? Colors.orange : Colors.red),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'API: $baseUrl',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            // Small MQTT status indicator
+                            const SizedBox(width: 8),
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: _mqttConnected ? Colors.green : Colors.grey.shade400,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1254,26 +1228,59 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
 
   // Device control actions
   Future<void> _toggleLight(String deviceKey, bool turnOn) async {
-    // Immediately update UI for responsive feedback
+    // Publish MQTT set message first (best-effort), then fallback to HTTP
+    final parts = deviceKey.split('.');
+    final deviceType = parts.isNotEmpty ? parts[0] : 'light';
+    final location = parts.length > 1 ? parts[1] : deviceKey;
+
+    final payload = json.encode({'state': turnOn ? 'on' : 'off'});
+    final topic = 'home/$deviceType/$location/set';
+
+    // Optimistic UI update
     setState(() {
       deviceToggles[deviceKey] = turnOn;
       isToggleLoading[deviceKey] = true;
     });
-    
-    await _sendDeviceCommand(deviceKey, {
-      'action': turnOn ? 'turn_on' : 'turn_off',
-      'brightness': turnOn ? 80 : 0,
-    });
-    
-    // Clear loading state
+
+    await _sendDeviceCommand(
+      deviceKey,
+      {
+        'action': turnOn ? 'turn_on' : 'turn_off',
+        'brightness': turnOn ? 80 : 0,
+      },
+      mqttTopic: topic,
+      mqttPayload: payload,
+    );
+
     setState(() {
       isToggleLoading[deviceKey] = false;
     });
   }
 
   Future<void> _toggleLock(String deviceKey, bool lock) async {
-    await _sendDeviceCommand(deviceKey, {
-      'action': lock ? 'lock' : 'unlock',
+    final parts = deviceKey.split('.');
+    final deviceType = parts.isNotEmpty ? parts[0] : 'lock';
+    final location = parts.length > 1 ? parts[1] : deviceKey;
+
+    final payload = json.encode({'locked': lock});
+    final topic = 'home/$deviceType/$location/set';
+
+    setState(() {
+      deviceToggles[deviceKey] = lock;
+      isToggleLoading[deviceKey] = true;
+    });
+
+    await _sendDeviceCommand(
+      deviceKey,
+      {
+        'action': lock ? 'lock' : 'unlock',
+      },
+      mqttTopic: topic,
+      mqttPayload: payload,
+    );
+
+    setState(() {
+      isToggleLoading[deviceKey] = false;
     });
   }
 
@@ -1284,63 +1291,113 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
   }
 
   Future<void> _toggleSwitch(String deviceKey, bool turnOn) async {
-    await _sendDeviceCommand(deviceKey, {
-      'action': turnOn ? 'turn_on' : 'turn_off',
+    final parts = deviceKey.split('.');
+    final deviceType = parts.isNotEmpty ? parts[0] : 'switch';
+    final location = parts.length > 1 ? parts[1] : deviceKey;
+
+    final payload = json.encode({'state': turnOn ? 'on' : 'off'});
+    final topic = 'home/$deviceType/$location/set';
+
+    setState(() {
+      deviceToggles[deviceKey] = turnOn;
+      isToggleLoading[deviceKey] = true;
+    });
+
+    await _sendDeviceCommand(
+      deviceKey,
+      {
+        'action': turnOn ? 'turn_on' : 'turn_off',
+      },
+      mqttTopic: topic,
+      mqttPayload: payload,
+    );
+
+    setState(() {
+      isToggleLoading[deviceKey] = false;
     });
   }
 
 
 
-  Future<void> _sendDeviceCommand(String deviceKey, Map<String, dynamic> command) async {
+  Future<void> _sendDeviceCommand(String deviceKey, Map<String, dynamic> command,
+      {String? mqttTopic, String? mqttPayload}) async {
+    // Optimistic update already applied by caller. Try MQTT first, then HTTP fallback.
+    final deviceId = deviceKey;
+    final prevToggle = deviceToggles.containsKey(deviceKey) ? deviceToggles[deviceKey] : null;
+
+    bool mqttOk = false;
+    bool httpOk = false;
+
     try {
-      // Convert device key to device ID format (e.g., "living_room.temperature" -> "living_room.temperature")
-      final deviceId = deviceKey;
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/devices/control'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'device_id': deviceId,
-          'action': command['action'] ?? 'set',
-          'parameters': {
-            ...command,
-          },
-          'user_id': userId,
-        }),
-      );
-      
-      if (response.statusCode == 200) {
-        // Show brief success feedback
+      // Attempt MQTT publish if topic/payload provided
+      if (mqttTopic != null && mqttPayload != null && _mqttService != null) {
+        try {
+          mqttOk = await _mqttService!.publish(mqttTopic, mqttPayload);
+        } catch (e) {
+          mqttOk = false;
+          _logger.fine('MQTT publish error for $mqttTopic: $e');
+        }
+      }
+
+      // Always send HTTP fallback in parallel (don't wait for MQTT success)
+      try {
+        final resp = await http
+            .post(
+          Uri.parse('$baseUrl/devices/${Uri.encodeComponent(deviceId)}/command'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'device_id': deviceId,
+            'action': command['action'] ?? 'set',
+            'parameters': command,
+            'user_id': userId,
+          }),
+        )
+            .timeout(const Duration(seconds: 5));
+
+        if (resp.statusCode == 200) {
+          httpOk = true;
+        } else {
+          httpOk = false;
+          _logger.warning('HTTP fallback failed: ${resp.statusCode}');
+        }
+      } catch (e) {
+        httpOk = false;
+        _logger.fine('HTTP fallback error: $e');
+      }
+
+      if (mqttOk || httpOk) {
+        // Success via at least one channel. Refresh authoritative state shortly.
         setState(() {
-          statusMessage = 'Device updated successfully!';
+          statusMessage = 'Device update sent';
         });
-        
-        // Clear status message after 2 seconds
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            setState(() {
-              statusMessage = '';
-            });
-          }
-        });
-        
-        // Refresh state after a short delay
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(const Duration(milliseconds: 300));
         await _fetchDeviceStates();
       } else {
-        // Revert toggle state on error
+        // Both failed, revert optimistic UI
         setState(() {
-          deviceToggles.remove(deviceKey);
-          statusMessage = 'Failed to update device';
+          if (prevToggle == null) {
+            deviceToggles.remove(deviceKey);
+          } else {
+            deviceToggles[deviceKey] = prevToggle;
+          }
+          statusMessage = 'Failed to update device (no MQTT or HTTP)';
         });
       }
     } catch (e) {
-      // Revert toggle state on error
+      // Unexpected error - revert optimistic UI
       setState(() {
-        deviceToggles.remove(deviceKey);
-        statusMessage = 'Connection error';
+        if (prevToggle == null) {
+          deviceToggles.remove(deviceKey);
+        } else {
+          deviceToggles[deviceKey] = prevToggle;
+        }
+        statusMessage = 'Error sending device command';
       });
       _logger.warning('Error sending device command: $e');
+    } finally {
+      setState(() {
+        isToggleLoading[deviceKey] = false;
+      });
     }
   }
 

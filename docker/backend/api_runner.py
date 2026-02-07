@@ -20,10 +20,10 @@ import uvicorn
 from contextlib import asynccontextmanager
 
 # Add src to Python path
-sys.path.insert(0, '/app/src')
+# sys.path.insert(0, '/app/src')  # Removed to prevent module duplication
 
-# Import the FastAPI app
-from api.api_server import app
+# Import the FastAPI app using full package path
+from src.api.api_server import app
 
 # Configure logging
 logging.basicConfig(

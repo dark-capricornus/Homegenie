@@ -1,8 +1,8 @@
-# 🏠 HomeGenie - Smart Home Automation System
+# HomeGenie - Smart Home Automation System
 
 A comprehensive home automation system built with Python, featuring real-time device monitoring, intelligent goal processing, and RESTful API control.
 
-## 🚀 Features
+## Features
 
 - **Real-time Device Monitoring**: MQTT-based sensor data collection
 - **Intelligent Automation**: Natural language goal processing and execution
@@ -12,7 +12,7 @@ A comprehensive home automation system built with Python, featuring real-time de
 - **Thread-Safe Architecture**: Concurrent operation support
 - **Extensible Design**: Easy to add new devices and automation rules
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 HomeGenie/
@@ -46,34 +46,44 @@ HomeGenie/
    pip install -r config/requirements.txt
    ```
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Start the System Components
+### 1. Start the System (Docker Recommended)
 
-**Terminal 1 - Start API Server:**
+The easiest way to run HomeGenie is with Docker Compose, which handles the Database, MQTT Broker, and API Server automatically.
+
 ```bash
-python main.py api
+docker compose up -d --build
 ```
 
-**Terminal 2 - Start Device Simulator:**
+Wait ~30 seconds for all services to become healthy.
+
+> **Note**: This starts:
+> - **API Server**: http://localhost:8000
+> - **MQTT Broker**: localhost:1883
+> - **PostgreSQL**: localhost:5432
+> - **Device Simulator**: Running internally in the container
+
+### 2. Verify Simulation
+
+Check if devices are hydrated and visible:
+
 ```bash
-python main.py simulator
+curl http://localhost:8000/state
 ```
 
-**Terminal 3 - Start Flutter App (optional):**
-```bash
-cd frontend
-flutter run -d chrome
-```
+You should see a list of hydration devices (lights, sensors, locks).
 
 ### 2. Test the System
 
 **Set a goal via API:**
+
 ```bash
 curl "http://localhost:8000/goal/john?goal=goodnight"
 ```
 
 **Check device states:**
+
 ```bash
 curl "http://localhost:8000/state"
 ```
@@ -83,7 +93,7 @@ curl "http://localhost:8000/state"
 curl "http://localhost:8000/history"
 ```
 
-## 📊 API Endpoints
+## API Endpoints
 
 The FastAPI server provides these endpoints:
 
@@ -98,7 +108,7 @@ The FastAPI server provides these endpoints:
 | `/devices` | GET | Available device list |
 | `/docs` | GET | Interactive API documentation |
 
-## 🏗️ Architecture
+## Architecture
 
 ### Core Components
 
@@ -114,7 +124,7 @@ The FastAPI server provides these endpoints:
 - **Scheduler**: Optimizes action execution timing
 - **MemoryAgent**: Tracks execution history and user patterns
 
-## 🧪 Testing
+## Testing
 
 Run the comprehensive test suite:
 ```bash
@@ -126,7 +136,7 @@ Or run individual demos:
 python main.py demo
 ```
 
-## 📱 Supported Device Types
+## Supported Device Types
 
 - **Lights**: Smart bulbs, dimmers, color-changing lights
 - **Climate**: Thermostats, AC units, heaters
@@ -135,7 +145,7 @@ python main.py demo
 - **Appliances**: Coffee makers, dishwashers, microwaves
 - **Sensors**: Temperature, humidity, motion, door/window sensors
 
-## 🔧 Configuration
+## Configuration
 
 Edit `config/app_config.py` to customize:
 - MQTT broker settings
@@ -143,7 +153,7 @@ Edit `config/app_config.py` to customize:
 - API server configuration
 - Logging levels
 
-## 🌟 Example Usage
+## Example Usage
 
 ### Setting Up a "Goodnight" Routine
 
@@ -159,7 +169,6 @@ curl "http://localhost:8000/goal/alice?goal=goodnight"
 ```
 
 ### Monitoring Device Status
-
 ```python
 # Get all device states
 curl "http://localhost:8000/state"
@@ -167,7 +176,7 @@ curl "http://localhost:8000/state"
 # Response includes real-time status of all connected devices
 ```
 
-## 🚀 Advanced Features
+## Advanced Features
 
 - **Natural Language Processing**: Understands complex automation goals
 - **User Preferences**: Learns and adapts to individual user patterns  
@@ -175,7 +184,7 @@ curl "http://localhost:8000/state"
 - **Historical Analysis**: Tracks usage patterns for optimization
 - **Extensible Plugin System**: Easy integration of new device types
 
-## 📝 Development
+## Development
 
 ### Adding New Device Types
 
@@ -190,17 +199,17 @@ curl "http://localhost:8000/state"
 2. Update the Planner for new goal types
 3. Test with the interactive documentation at `/docs`
 
-## 🤝 Contributing
+## Contributing
 
 1. Follow the existing code structure in `src/`
 2. Add tests for new features in `tests/`
 3. Update documentation in `docs/`
 4. Run the test suite before submitting changes
 
-## 📄 License
+##  License
 
 This project is designed as a comprehensive example of modern home automation architecture using Python, FastAPI, and MQTT protocols.
 
 ---
 
-**HomeGenie** - Making homes smarter, one automation at a time! 🏠✨
+**HomeGenie** - Making homes smarter, one automation at a time!

@@ -9,19 +9,19 @@ import asyncio
 import json
 import logging
 import threading
-import time
-from typing import Optional, Dict, Any, List, Callable
+import os
+from typing import Optional, Dict, Any, List
 from datetime import datetime
+
+import httpx
 
 try:
     import paho.mqtt.client as mqtt
 except ImportError:
-    print("paho-mqtt not found. Installing...")
-    import subprocess
     import sys
+    import subprocess
     subprocess.check_call([sys.executable, "-m", "pip", "install", "paho-mqtt"])
     import paho.mqtt.client as mqtt
-
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +41,8 @@ class ExecutorAgent:
         broker_host: str = "localhost",
         broker_port: int = 1883,
         client_id: Optional[str] = None,
-        base_topic: str = "home"
+        base_topic: str = "home",
+        context_store=None  # For two-phase state reconciliation
     ):
         """
         Initialize the ExecutorAgent.
@@ -51,17 +52,40 @@ class ExecutorAgent:
             broker_port (int): MQTT broker port
             client_id (Optional[str]): MQTT client ID
             base_topic (str): Base topic for device commands (default: "home")
+            context_store: ContextStore instance for state tracking
         """
         self.broker_host = broker_host
         self.broker_port = broker_port
         self.base_topic = base_topic
         self.client_id = client_id or f"executor_agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.context_store = context_store  # For two-phase state
         
         self._client: Optional[mqtt.Client] = None
         self._connected = False
         self._lock = threading.Lock()
         
+        # Device Registry
+        self.devices: Dict[str, Any] = {}
+        self._load_devices()
+        
         logger.info(f"ExecutorAgent initialized - Broker: {broker_host}:{broker_port}, Base topic: {base_topic}")
+
+    def _load_devices(self) -> None:
+        """Load device configuration from config/devices.json."""
+        config_path = os.path.join(os.getcwd(), "config", "devices.json")
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    devices_list = json.load(f)
+                    # Index by ID for fast lookup
+                    self.devices = {d["id"]: d for d in devices_list if d.get("enabled", True)}
+                logger.info(f"Loaded {len(self.devices)} devices from {config_path}")
+            else:
+                logger.debug(f"No device config found at {config_path}")
+                self.devices = {}
+        except Exception as e:
+            logger.error(f"Failed to load device config: {e}")
+            self.devices = {}
     
     def _on_connect(self, client, userdata, flags, rc):
         """Callback for when the client receives a CONNACK response from the server."""
@@ -150,7 +174,8 @@ class ExecutorAgent:
         Returns:
             str: MQTT topic for device commands
         """
-        return f"{self.base_topic}/{device_type}/{location}/command"
+        # Use '/set' topic so device simulators listening on '.../set' receive commands
+        return f"{self.base_topic}/{device_type}/{location}/set"
     
     def _parse_device_id(self, device_id: str) -> tuple[str, str]:
         """
@@ -192,84 +217,162 @@ class ExecutorAgent:
             "action": action
         }
         
-        # Map common actions to device commands
+        # Map common actions to device commands and set 'value' consistently so simulators
+        # that expect {'action': '...', 'value': ...} will understand the payload.
         if action == "turn_on":
-            command.update({"state": "on"})
+            command.update({"value": True})
         elif action == "turn_off":
-            command.update({"state": "off"})
+            command.update({"value": False})
         elif action == "toggle":
-            command.update({"toggle": True})
+            command.update({"value": "toggle"})
         elif action == "set_brightness":
-            command.update({"brightness": task.get("value", 50)})
+            command.update({"value": task.get("value", 50)})
         elif action == "set_color":
-            command.update({"color": task.get("value", "white")})
+            command.update({"value": task.get("value", "white")})
         elif action == "set_temperature":
-            command.update({"target_temperature": task.get("value", 22.0)})
+            command.update({"value": task.get("value", 22.0)})
         elif action == "lock":
-            command.update({"locked": True})
+            command.update({"value": True})
         elif action == "unlock":
-            command.update({"locked": False})
+            command.update({"value": False})
         elif action == "set_speed":
-            command.update({"speed": task.get("value", 1)})
+            command.update({"value": task.get("value", 1)})
         else:
-            # Generic action - include all task parameters
+            # Generic action - include all task parameters (except device/action) and mirror a 'value' when obvious
             for key, value in task.items():
                 if key not in ["device", "action"]:
                     command[key] = value
+            if "value" not in command and any(k in command for k in ("brightness", "target_temperature", "speed", "color", "locked")):
+                # map common param to value for compat
+                for k in ("brightness", "target_temperature", "speed", "color", "locked"):
+                    if k in command:
+                        command["value"] = command[k]
+                        break
         
         return command
     
     async def execute(self, task: Dict[str, Any]) -> bool:
         """
-        Execute a device control task.
+        Execute a device control task via configured protocol (MQTT or HTTP).
         
         Args:
             task (Dict[str, Any]): Task specification with device, action, and parameters
             
         Returns:
-            bool: True if command was published successfully, False otherwise
+            bool: True if command was dispatched successfully, False otherwise
         """
+        device_id = task.get("device", "")
+        action = task.get("action", "")
+        value = task.get("value")
+        
+        if not device_id:
+            logger.error("❌ No device specified in task")
+            return False
+        
+        # TWO-PHASE STATE: Write commanded state ONLY (status = pending)
+        # ExecutorAgent NEVER confirms success - only SensorAgent does
+        if self.context_store:
+            try:
+                await self.context_store.async_update_commanded_state(
+                    device_id, action, value, timeout_seconds=5.0
+                )
+                logger.debug(f"📝 Commanded state written for {device_id}: {action}={value} (pending)")
+            except Exception as e:
+                logger.error(f"Failed to write commanded state: {e}")
+            
+        # Look up device config or fallback
+        device_config = self.devices.get(device_id)
+        if not device_config:
+             # Fallback: assume MQTT with default topic structure
+             # Warn but proceed for backward compatibility
+             logger.warning(f"⚠️ Device {device_id} not found in config, falling back to default MQTT logic")
+             device_type, location = self._parse_device_id(device_id)
+             protocol = "mqtt"
+             # Fallback topic
+             topic = self._build_command_topic(device_type, location)
+             http_url = None
+        else:
+            protocol = device_config.get("protocol", "mqtt")
+            topic = device_config.get("topic")
+            http_url = device_config.get("command_url")
+
+        # Prepare payload
+        payload = self._build_command_payload(task)
+        
         try:
-            # Ensure we're connected
-            if not self._connected:
-                logger.info("🔌 Not connected, attempting to connect...")
-                if not await self.connect():
-                    logger.error("❌ Failed to connect to MQTT broker")
-                    return False
-            
-            # Parse device information
-            device_id = task.get("device", "")
-            if not device_id:
-                logger.error("❌ No device specified in task")
+            if protocol == "mqtt":
+                return await self._execute_mqtt(device_id, topic, payload, device_config)
+            elif protocol == "http":
+                return await self._execute_http(device_id, http_url, payload, device_config)
+            else:
+                logger.error(f"❌ Unknown protocol '{protocol}' for device {device_id}")
                 return False
-            
-            device_type, location = self._parse_device_id(device_id)
-            
-            # Build command topic and payload
-            command_topic = self._build_command_topic(device_type, location)
-            command_payload = self._build_command_payload(task)
-            
-            # Publish command
-            payload_json = json.dumps(command_payload)
-            
-            logger.info(f"📤 Publishing command to {command_topic}: {payload_json}")
-            
-            with self._lock:
-                if self._client and self._connected:
-                    result = self._client.publish(command_topic, payload_json, qos=1)
-                    
-                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                        logger.info(f"✅ Command sent successfully for {device_id}")
-                        return True
-                    else:
-                        logger.error(f"❌ Failed to publish command: {result.rc}")
-                        return False
-                else:
-                    logger.error("❌ MQTT client not connected")
-                    return False
-            
+                
         except Exception as e:
-            logger.error(f"❌ Error executing task: {e}")
+            logger.error(f"❌ Error executing task for {device_id}: {e}")
+            return False
+
+    async def _execute_mqtt(self, device_id: str, topic: Optional[str], payload: Dict[str, Any], config: Optional[Dict[str, Any]]) -> bool:
+        """Helper to execute MQTT command."""
+        # Ensure topic exists
+        if not topic:
+             # Should have been generated in fallback, but double check
+             device_type, location = self._parse_device_id(device_id)
+             topic = self._build_command_topic(device_type, location)
+
+        # Ensure we're connected
+        if not self._connected:
+            logger.info("🔌 Not connected, attempting to connect...")
+            if not await self.connect():
+                logger.error("❌ Failed to connect to MQTT broker")
+                return False
+
+        payload_json = json.dumps(payload)
+        logger.info(f"🚀 [MQTT] Dispatching to {topic}: {payload_json}")
+        
+        with self._lock:
+            if self._client and self._connected:
+                qos = config.get("qos", 1) if config else 1
+                retain = config.get("retain", False) if config else False
+                
+                result = self._client.publish(topic, payload_json, qos=qos, retain=retain)
+                
+                if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                    logger.info(f"✅ MQTT Command sent for {device_id}")
+                    return True
+                else:
+                    logger.error(f"❌ Failed to publish command: {result.rc}")
+                    return False
+            else:
+                return False
+
+    async def _execute_http(self, device_id: str, url: Optional[str], payload: Dict[str, Any], config: Optional[Dict[str, Any]]) -> bool:
+        """Helper to execute HTTP command."""
+        if not url:
+            logger.error(f"❌ No command_url configured for HTTP device {device_id}")
+            return False
+            
+        timeout = config.get("timeout", 3.0) if config else 3.0
+        method = config.get("method", "POST") if config else "POST"
+        
+        logger.info(f"🚀 [HTTP] Dispatching to {url}: {payload}")
+        
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                if method.upper() == "POST":
+                    response = await client.post(url, json=payload)
+                else:
+                    # Fallback or other methods if needed
+                    response = await client.request(method, url, json=payload)
+                
+                if response.status_code >= 200 and response.status_code < 300:
+                    logger.info(f"✅ HTTP Command sent for {device_id} (Status: {response.status_code})")
+                    return True
+                else:
+                    logger.warning(f"⚠️ HTTP Command failed for {device_id} (Status: {response.status_code}): {response.text}")
+                    return False
+        except Exception as e:
+            logger.error(f"❌ HTTP Request failed for {device_id}: {e}")
             return False
     
     async def execute_batch(self, tasks: List[Dict[str, Any]]) -> List[bool]:

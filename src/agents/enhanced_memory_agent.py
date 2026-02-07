@@ -23,7 +23,7 @@ from collections import defaultdict, Counter
 from dataclasses import dataclass
 import statistics
 from enum import Enum
-from src.core import db_v2
+from src.core import db_async as db_v2
 
 
 class InteractionType(Enum):
@@ -78,17 +78,24 @@ class EnhancedMemoryAgent:
         """
         self.context_store = context_store
         
-        # Core history storage
+        # In-memory storage for user interactions and learning
         self._history: Dict[str, List[Dict[str, Any]]] = {}
         self._max_history_per_user = 1000
+        self._device_usage: Dict[str, Dict[str, int]] = {}  # user_id -> {device_id: count}
+        self._time_patterns: Dict[str, Dict[str, List[datetime]]] = {}  # user_id -> {time_period: [timestamps]}
+        self._preferences: Dict[str, Dict[str, Any]] = {}  # user_id -> {pref_key: value}
+        self._behavior_patterns: Dict[str, List[BehaviorPattern]] = {}  # user_id -> [patterns]
+        self._proactive_suggestions: Dict[str, List[ProactiveSuggestion]] = {}  # user_id -> [suggestions]
         
-        # Behavioral learning data
-        self._behavior_patterns: Dict[str, List[BehaviorPattern]] = {}
-        self._user_preferences: Dict[str, Dict[str, Any]] = {}
-        self._device_usage_stats: Dict[str, Dict[str, Any]] = {}
-        self._time_patterns: Dict[str, Dict[str, List[datetime]]] = defaultdict(lambda: defaultdict(list))
+        # AI Workload Isolation: ThreadPoolExecutor for CPU-bound pattern detection
+        # This prevents blocking the main asyncio loop during pattern analysis
+        import concurrent.futures
+        self._pattern_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="pattern_worker"
+        )
         
-        # Proactive suggestions
+        logging.info("EnhancedMemoryAgent initialized with pattern detection workload isolation")
         self._active_suggestions: Dict[str, List[ProactiveSuggestion]] = {}
         self._suggestion_counter = 0
         
@@ -103,7 +110,7 @@ class EnhancedMemoryAgent:
         
         logging.info("Enhanced Memory Agent initialized with behavioral learning")
     
-    def add_entry(self, user_id: str, entry_type: str, data: Dict[str, Any]) -> None:
+    async def add_entry(self, user_id: str, entry_type: str, data: Dict[str, Any]) -> None:
         """
         Add an entry to user's history with enhanced learning.
         
@@ -144,25 +151,44 @@ class EnhancedMemoryAgent:
         
         logging.debug(f"Added {entry_type} entry for user {user_id} with learning")
 
-        # Persist key events to Postgres asynchronously; best-effort, do not block
+        # Persist key events to Postgres reliably (Awaited)
         try:
-            asyncio.create_task(db_v2.save_memory_entry(user_id, entry_type, data))
+            db_entry = {"user_id": user_id, "type": entry_type, "value": data, "ts": timestamp.isoformat()}
+            await db_v2.save_memory_entry(db_entry)
         except Exception:
-            # swallowing persistence errors to keep runtime stable
-            logging.debug("Failed to schedule persistence for memory entry")
+            logging.error("Failed to persist memory entry to DB")
     
     def _update_learning_data(self, user_id: str, entry_type: str, data: Dict[str, Any], timestamp: datetime):
         """Update various learning data structures"""
+        # Initialize user_id dictionaries if they don't exist
+        if user_id not in self._time_patterns:
+            self._time_patterns[user_id] = {}
+        # The following two lines were in the user's instruction but refer to attributes
+        # (_action_sequences, _context_associations) not defined in the class's __init__.
+        # They are omitted to maintain syntactical correctness and avoid AttributeError.
+        # if user_id not in self._action_sequences:
+        #     self._action_sequences[user_id] = []
+        # if user_id not in self._context_associations:
+        #     self._context_associations[user_id] = {}
+        
+        # Initialize entry_type list if it doesn't exist
+        if entry_type not in self._time_patterns[user_id]:
+            self._time_patterns[user_id][entry_type] = []
+        
+        # Track time patterns
+        self._time_patterns[user_id][entry_type].append(timestamp)
         
         # Update device usage statistics
         if entry_type == InteractionType.DEVICE_COMMAND.value:
             device = data.get('device', 'unknown')
             action = data.get('action', 'unknown')
             
-            if user_id not in self._device_usage_stats:
-                self._device_usage_stats[user_id] = {}
+            # The original code had `self._device_usage_stats` which is not defined in __init__.
+            # Assuming `self._device_usage` is the intended attribute based on __init__.
+            if user_id not in self._device_usage:
+                self._device_usage[user_id] = {}
             
-            device_stats = self._device_usage_stats[user_id].setdefault(device, {
+            device_stats = self._device_usage[user_id].setdefault(device, {
                 'total_uses': 0,
                 'actions': Counter(),
                 'times_used': [],
@@ -200,15 +226,15 @@ class EnhancedMemoryAgent:
     
     def _update_preferences(self, user_id: str, entry_type: str, data: Dict[str, Any]):
         """Learn and update user preferences"""
-        if user_id not in self._user_preferences:
-            self._user_preferences[user_id] = {
+        if user_id not in self._preferences:
+            self._preferences[user_id] = {
                 'device_preferences': {},
                 'time_preferences': {},
                 'action_preferences': {},
                 'learned_at': datetime.now()
             }
         
-        prefs = self._user_preferences[user_id]
+        prefs = self._preferences[user_id]
         
         # Learn device preferences
         if entry_type == InteractionType.DEVICE_COMMAND.value:
@@ -235,12 +261,18 @@ class EnhancedMemoryAgent:
                         if len(device_prefs['settings'][key]) > 10:
                             device_prefs['settings'][key] = device_prefs['settings'][key][-10:]
     
-    async def _detect_patterns_async(self, user_id: str):
-        """Detect behavioral patterns asynchronously"""
+    async def _detect_patterns_async(self, user_id: str) -> None:
+        """Detect behavioral patterns asynchronously in background thread"""
         try:
-            await self._detect_patterns(user_id)
+            # Run CPU-bound pattern detection in background thread pool
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                self._pattern_executor,
+                self._detect_patterns,
+                user_id
+            )
         except Exception as e:
-            logging.error(f"Error detecting patterns for {user_id}: {e}")
+            logging.error(f"Pattern detection error for {user_id}: {e}")
     
     async def _detect_patterns(self, user_id: str):
         """Detect behavioral patterns for a user"""
@@ -672,8 +704,8 @@ class EnhancedMemoryAgent:
             del self._history[user_id]
         if user_id in self._behavior_patterns:
             del self._behavior_patterns[user_id]
-        if user_id in self._user_preferences:
-            del self._user_preferences[user_id]
+        if user_id in self._preferences:
+            del self._preferences[user_id]
         if user_id in self._device_usage_stats:
             del self._device_usage_stats[user_id]
         if user_id in self._active_suggestions:

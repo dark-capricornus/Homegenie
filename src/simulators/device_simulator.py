@@ -8,7 +8,16 @@ This module simulates IoT devices by:
 4. Simulating realistic device behaviors and responses
 """
 
+# ===== CRITICAL: Windows asyncio fix =====
+# Must be at the very top before any asyncio usage
+import sys
+if sys.platform.startswith("win"):
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+# ==========================================
+
 import asyncio
+import os
 import json
 import logging
 import random
@@ -18,7 +27,8 @@ from datetime import datetime, timedelta
 try:
     import aiomqtt
 except ImportError:
-    print("aiomqtt not found. Installing...")
+    logger = logging.getLogger(__name__)
+    logger.warning("aiomqtt not found. Installing...")
     import subprocess
     import sys
     subprocess.check_call([sys.executable, "-m", "pip", "install", "aiomqtt"])
@@ -264,9 +274,7 @@ class DeviceSimulator:
             else:
                 payload = str(message.payload)
             
-            print(f"🔧 COMMAND RECEIVED:")
-            print(f"   📍 Topic: {topic}")
-            print(f"   📦 Payload: {payload}")
+            logger.info(f"[SIM] Received command on {topic}: {payload}")
             
             # Parse topic
             base, device_type, location, action_type = self._parse_topic(topic)
@@ -278,13 +286,13 @@ class DeviceSimulator:
             try:
                 command = json.loads(payload)
             except json.JSONDecodeError as e:
-                print(f"   ❌ Invalid JSON: {e}")
+                logger.warning(f"[SIM] Invalid JSON payload on {topic}: {e}")
                 return
             
-            print(f"   🎯 Device: {device_type}.{location}")
-            print(f"   ⚡ Action: {command.get('action', 'unknown')}")
+            device_key = f"{device_type}.{location}"
+            logger.info(f"[SIM] Device: {device_key} - Action: {command.get('action', 'unknown')}")
             if 'value' in command:
-                print(f"   📊 Value: {command['value']}")
+                logger.info(f"[SIM] Value: {command['value']}")
             
             # Get response delay for this device type
             config = self._device_configs.get(device_type, self._device_configs["sensor"])
@@ -295,44 +303,42 @@ class DeviceSimulator:
             
             # Process command and update device state
             new_state = self._process_command(device_type, location, command)
+            logger.info(f"[SIM] Updated device {device_key} to state={json.dumps(new_state)}")
             
             # Publish updated state
             state_topic = f"{base}/{device_type}/{location}/state"
             state_payload = json.dumps(new_state)
             
-            async with aiomqtt.Client(
-                hostname=self.broker_host,
-                port=self.broker_port
-            ) as client:
-                await client.publish(state_topic, state_payload)
-            
-            print(f"   ✅ State Published:")
-            print(f"   📍 Topic: {state_topic}")
-            print(f"   📦 New State: {json.dumps(new_state, indent=6)}")
-            print()  # Add spacing
+            logger.info(f"🚀 [TRACE] SIMULATOR PUBLISH STATE | Topic: {state_topic} | Payload: {state_payload}")
+
+            async with aiomqtt.Client(hostname=self.broker_host, port=self.broker_port) as client:
+                # Publish without retaining to avoid stale retained messages
+                await client.publish(state_topic, state_payload, qos=1, retain=False)
+
+            logger.info(f"[SIM] Published state on {state_topic}: {state_payload}")
             
         except Exception as e:
-            print(f"   ❌ Error processing command: {e}")
-            logger.error(f"Error handling command: {e}")
+            logger.error(f"❌ [SIM] CRITICAL ERROR in handle_command: {e}", exc_info=True)
     
     async def _publish_periodic_states(self) -> None:
         """Publish periodic sensor updates for realistic simulation."""
         while self._running:
             try:
                 # Update sensor devices with new readings
+                # Topic format: home/{device_type}/{location}/state
                 sensor_updates = [
-                    ("home/living_room/temperature/state", {
+                    ("home/temperature/living_room/state", {
                         "value": round(random.uniform(20.0, 25.0), 1),
                         "unit": "C",
                         "humidity": random.randint(40, 60),
                         "timestamp": datetime.now().isoformat()
                     }),
-                    ("home/bedroom/motion/state", {
+                    ("home/motion/bedroom/state", {
                         "detected": random.choice([True, False]),
                         "confidence": round(random.uniform(0.7, 0.98), 2),
                         "timestamp": datetime.now().isoformat()
                     }),
-                    ("home/outdoor/light_sensor/state", {
+                    ("home/light_sensor/outdoor/state", {
                         "value": random.randint(10, 1000),
                         "unit": "lux", 
                         "is_dark": random.randint(10, 1000) < 50,
@@ -346,8 +352,9 @@ class DeviceSimulator:
                 ) as client:
                     
                     for topic, state in sensor_updates:
-                        await client.publish(topic, json.dumps(state))
-                        print(f"📊 Sensor Update: {topic} -> {state.get('value', 'N/A')}")
+                        # Publish periodic sensor updates without retain
+                        await client.publish(topic, json.dumps(state), qos=1, retain=False)
+                        logger.info(f"📊 Sensor Update: {topic} -> {state.get('value', 'N/A')}")
                 
                 # Wait 30 seconds before next sensor update
                 await asyncio.sleep(30)
@@ -364,16 +371,16 @@ class DeviceSimulator:
         processing device commands and publishing states.
         """
         if self._running:
-            print("⚠️  DeviceSimulator is already running")
+            logger.warning("⚠️  DeviceSimulator is already running")
             return
         
         self._running = True
-        print("🚀 Starting DeviceSimulator...")
-        print(f"   📡 MQTT Broker: {self.broker_host}:{self.broker_port}")
-        print(f"   🎯 Listening for commands on: home/+/+/set")
-        print(f"   📊 Publishing states to: home/+/+/state")
-        print(f"   🤖 Client ID: {self.client_id}")
-        print()
+        logger.info("🚀 Starting DeviceSimulator...")
+        logger.info(f"📡 MQTT Broker: {self.broker_host}:{self.broker_port}")
+        logger.info(f"🎯 Listening for commands on: home/+/+/set")
+        logger.info(f"📊 Publishing states to: home/+/+/state")
+        logger.info(f"🤖 Client ID: {self.client_id}")
+        logger.info("")
         
         # Start periodic sensor updates in background
         sensor_task = asyncio.create_task(self._publish_periodic_states())
@@ -386,28 +393,38 @@ class DeviceSimulator:
                 ) as client:
                     
                     self._client = client
-                    
-                    # Subscribe to device command topic
+
+                    logger.info(f"[SIM] Connected to MQTT at {self.broker_host}:{self.broker_port}")
+
+                    # Subscribe to device command topic - FIX: use correct pattern
                     await client.subscribe("home/+/+/set")
-                    print("✅ Subscribed to device commands")
-                    print("💡 Ready to simulate devices! Send commands to test...")
-                    print("-" * 60)
+                    logger.info("[SIM] ✅ Subscribed to home/+/+/set")
                     
+                    # Also subscribe to a legacy/alternate 'command' topic if present
+
+                    try:
+                        await client.subscribe("home/+/+/command")
+                    except Exception:
+                        pass
+                    logger.info("[SIM] ✅ Subscribed to device commands")
+                    logger.info("[SIM] 💡 Ready to simulate devices! Send commands to test...")
+                    logger.info("[SIM] " + "-" * 60)
+
                     # Process incoming commands
-                    async with client.messages() as messages:
-                        async for message in messages:
-                            if not self._running:
-                                break
-                            await self._handle_command(message)
+                    async for message in client.messages:
+                        if not self._running:
+                            break
+                        # Ensure concurrency: do not await the handler
+                        asyncio.create_task(self._handle_command(message))
                         
             except aiomqtt.MqttError as e:
-                print(f"❌ MQTT error: {e}")
+                logger.error(f"❌ MQTT error: {e}")
                 if self._running:
-                    print("🔄 Attempting to reconnect in 5 seconds...")
+                    logger.info("🔄 Attempting to reconnect in 5 seconds...")
                     await asyncio.sleep(5)
                     
             except Exception as e:
-                print(f"❌ Unexpected error: {e}")
+                logger.error(f"❌ Unexpected error: {e}")
                 logger.error(f"Unexpected error in DeviceSimulator: {e}")
                 if self._running:
                     await asyncio.sleep(10)
@@ -418,12 +435,12 @@ class DeviceSimulator:
             await sensor_task
         except asyncio.CancelledError:
             pass
-        
-        print("🛑 DeviceSimulator stopped")
-    
+
+        logger.info("🛑 DeviceSimulator stopped")
+
     def stop(self) -> None:
         """Stop the device simulator."""
-        print("🛑 Stopping DeviceSimulator...")
+        logger.info("🛑 Stopping DeviceSimulator...")
         self._running = False
     
     def is_running(self) -> bool:
@@ -446,46 +463,35 @@ class DeviceSimulator:
         }
 
 
-# Example usage and testing
-async def demo_device_simulator():
-    """Demonstrate the device simulator."""
-    print("=== Device Simulator Demo ===\n")
-    
-    # Create simulator
-    simulator = DeviceSimulator()
-    
-    # Show initial stats
-    print("📊 Initial Stats:")
-    stats = simulator.get_stats()
-    print(f"   🤖 Supported devices: {stats['supported_device_types']}")
-    print()
-    
-    print("💡 The simulator will:")
-    print("   1. 🎯 Listen for commands on 'home/+/+/set'")
-    print("   2. 🖨️  Print received commands")  
-    print("   3. 📊 Publish device states to 'home/+/+/state'")
-    print("   4. 📡 Send periodic sensor updates")
-    print()
-    
-    print("🧪 To test, run these commands in another terminal:")
-    print("   mosquitto_pub -h localhost -t 'home/light/livingroom/set' \\")
-    print('     -m \'{"action":"set_brightness","value":40}\'')
-    print()
-    print("   mosquitto_pub -h localhost -t 'home/thermostat/bedroom/set' \\")
-    print('     -m \'{"action":"set_temperature","value":22.5}\'')
-    print()
-    
+async def main() -> None:
+    """CLI entrypoint for running the simulator.
+
+    Reads MQTT_HOST and MQTT_PORT from the environment (defaults: localhost:1883).
+    Runs until interrupted and attempts a clean shutdown.
+    """
+    host = os.environ.get('MQTT_HOST', 'localhost')
+    port_str = os.environ.get('MQTT_PORT', '1883')
     try:
-        # Start simulator (runs indefinitely)
+        port = int(port_str)
+    except Exception:
+        port = 1883
+
+    logger.info('[SIM] Starting HomeGenie Device Simulator...')
+    logger.info(f"[SIM] Broker: {host}:{port}")
+
+    simulator = DeviceSimulator(broker_host=host, broker_port=port)
+    try:
         await simulator.start()
     except KeyboardInterrupt:
-        print("\n🛑 Received interrupt signal")
+        logger.info('\n[SIM] Received interrupt signal, shutting down...')
+        simulator.stop()
+    except Exception as e:
+        logger.error(f"[SIM] Simulator error: {e}")
         simulator.stop()
 
 
 if __name__ == "__main__":
-    # Run the device simulator
     try:
-        asyncio.run(demo_device_simulator())
+        asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n👋 DeviceSimulator demo ended")
+        logger.info('\n[SIM] DeviceSimulator demo ended')

@@ -30,7 +30,7 @@ async def migrate_contextstore_handler():
 
     # Import lazily to avoid circular imports during app startup
     try:
-        from src.core import db_v2
+        from src.core import db_async as db_v2
         # context_store is created in api_server and imported here to capture current state
         from src.api.api_server import context_store
     except Exception as e:

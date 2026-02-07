@@ -1,0 +1,9 @@
+[
+  {
+    "name": "local_simulator",
+    "url": "http://localhost:8000/state",
+    "interval": 5,
+    "timeout": 3,
+    "enabled": true
+  }
+]

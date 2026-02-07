@@ -9,7 +9,7 @@ import asyncio
 import threading
 import json
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 
 class ContextStore:
@@ -50,6 +50,151 @@ class ContextStore:
         async with self._async_lock:
             self._states[topic] = payload
             self._last_updated[topic] = datetime.now()
+
+    def update_probe_status(self, name: str, status: str, state: Optional[Dict[str, Any]] = None, error: Optional[str] = None, last_seen: Optional[datetime] = None) -> None:
+        """
+        Update the status of a probe.
+        
+        Args:
+            name (str): Name of the probe
+            status (str): "online" or "offline"
+            state (Optional[Dict]): The state data retrieved (if successful)
+            error (Optional[str]): Error message (if failed)
+            last_seen (Optional[datetime]): Timestamp of last successful probe
+        """
+        payload = {
+            "status": status,
+            "timestamp": datetime.now().isoformat(),
+        }
+        if state is not None:
+            payload["state"] = state
+        if error is not None:
+            payload["error"] = error
+        if last_seen is not None:
+            payload["last_seen"] = last_seen.isoformat()
+            
+        self.update_state(f"probes/{name}", payload)
+
+    async def async_update_probe_status(self, name: str, status: str, state: Optional[Dict[str, Any]] = None, error: Optional[str] = None, last_seen: Optional[datetime] = None) -> None:
+        """Async version of update_probe_status."""
+        payload = {
+            "status": status,
+            "timestamp": datetime.now().isoformat(),
+        }
+        if state is not None:
+            payload["state"] = state
+        if error is not None:
+            payload["error"] = error
+        if last_seen is not None:
+            payload["last_seen"] = last_seen.isoformat()
+            
+        await self.async_update_state(f"probes/{name}", payload)
+    
+    async def async_update_commanded_state(self, device_id: str, action: str, value: Any, timeout_seconds: float = 5.0) -> None:
+        """
+        ExecutorAgent writes commanded state ONLY (status = pending).
+        ExecutorAgent NEVER confirms success - only SensorAgent does.
+        
+        Args:
+            device_id: Device identifier (e.g., "light.living_room")
+            action: Action being commanded (e.g., "turn_on", "set_brightness")
+            value: Value for the action
+            timeout_seconds: Timeout for command confirmation
+        """
+        key = f"devices/{device_id}/commanded"
+        now = datetime.now(timezone.utc)
+        payload = {
+            "action": action,
+            "value": value,
+            "status": "pending",
+            "timestamp": now.isoformat(),
+            "timeout_at": (now + timedelta(seconds=timeout_seconds)).isoformat()
+        }
+        await self.async_update_state(key, payload)
+    
+    async def async_update_observed_state(self, device_id: str, state: Dict[str, Any]) -> None:
+        """
+        SensorAgent writes observed state ONLY and reconciles with commanded.
+        SensorAgent is the SOLE authority for confirming success/failure.
+        
+        Args:
+            device_id: Device identifier
+            state: Observed state from device
+        """
+        obs_key = f"devices/{device_id}/observed"
+        await self.async_update_state(obs_key, {
+            **state,
+            "last_seen": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Reconcile: mark commanded as confirmed if match
+        cmd_key = f"devices/{device_id}/commanded"
+        commanded = await self.async_get_state(cmd_key)
+        if commanded and commanded.get("status") == "pending":
+            # Check if observed state matches commanded intent
+            if self._states_match(commanded, state):
+                commanded["status"] = "confirmed"
+                commanded["confirmed_at"] = datetime.now(timezone.utc).isoformat()
+                await self.async_update_state(cmd_key, commanded)
+    
+    def _states_match(self, commanded: Dict[str, Any], observed: Dict[str, Any]) -> bool:
+        """
+        Check if observed state matches commanded intent.
+        
+        Args:
+            commanded: Commanded state with action/value
+            observed: Observed state from device
+            
+        Returns:
+            True if states match (command was confirmed)
+        """
+        action = commanded.get("action")
+        cmd_value = commanded.get("value")
+        
+        # Simple matching logic - can be enhanced
+        if action == "turn_on":
+            return observed.get("state") == "on" or observed.get("power") == True
+        elif action == "turn_off":
+            return observed.get("state") == "off" or observed.get("power") == False
+        elif action == "set_brightness":
+            # Allow small tolerance for brightness
+            obs_brightness = observed.get("brightness", observed.get("value"))
+            if obs_brightness is not None and cmd_value is not None:
+                return abs(float(obs_brightness) - float(cmd_value)) < 0.05  # 5% tolerance
+        elif action == "set_temperature":
+            obs_temp = observed.get("temperature", observed.get("target", observed.get("value")))
+            if obs_temp is not None and cmd_value is not None:
+                return abs(float(obs_temp) - float(cmd_value)) < 0.5  # 0.5 degree tolerance
+        elif action == "lock":
+            return observed.get("locked") == True or observed.get("state") == "locked"
+        elif action == "unlock":
+            return observed.get("locked") == False or observed.get("state") == "unlocked"
+        
+        # Default: no match
+        return False
+    
+    async def async_check_timeouts(self) -> None:
+        """
+        Background task to mark timed-out commands as failed.
+        Should be called periodically (e.g., every 1 second).
+        """
+        from src.core.time_utils import utc_now, parse_iso_timestamp
+        
+        now = utc_now()  # ✅ Always UTC-aware
+        async with self._async_lock:
+            for key, value in list(self._states.items()):
+                if "/commanded" in key and isinstance(value, dict) and value.get("status") == "pending":
+                    timeout_str = value.get("timeout_at")
+                    if timeout_str:
+                        try:
+                            timeout_dt = parse_iso_timestamp(timeout_str)  # ✅ Always UTC-aware
+                            if now > timeout_dt:  # ✅ Safe comparison
+                                value["status"] = "failed"
+                                value["error"] = "timeout"
+                                value["failed_at"] = now.isoformat()
+                                self._states[key] = value
+                        except Exception:
+                            pass  # Skip invalid timestamps
     
     def get_state(self, topic: str) -> Optional[Any]:
         """

@@ -13,8 +13,17 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 
+# Load environment variables from .env if present
 try:
-    from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Loaded environment from .env")
+except ImportError:
+    print("⚠️ python-dotenv not installed, skipping .env load")
+
+
+try:
+    from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request
     from fastapi.responses import JSONResponse
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
@@ -24,7 +33,7 @@ except ImportError:
     import subprocess
     import sys
     subprocess.check_call([sys.executable, "-m", "pip", "install", "fastapi", "uvicorn", "python-multipart"])
-    from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+    from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request
     from fastapi.responses import JSONResponse
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
@@ -36,9 +45,11 @@ from src.agents.executor_agent import ExecutorAgent
 from src.agents.enhanced_memory_agent import EnhancedMemoryAgent
 from src.agents.planner_agent import PlannerAgent
 from src.agents.scheduler_agent import SchedulerAgent
+
 from src.core.feature_flags import flags
 from dataclasses import asdict
 from src.core.settings_v2 import settings_v2
+from src.core import db_async as db_v2
 
 
 # Configure logging
@@ -299,8 +310,8 @@ logger.info(f"🏗️ Created global context store with ID: {id(context_store)}"
 
 # Use localhost for MQTT broker when running outside Docker
 mqtt_broker_host = os.getenv("MQTT_BROKER_HOST", "localhost")
-executor_agent = ExecutorAgent(broker_host=mqtt_broker_host)
-logger.info(f"🔧 Created executor agent with MQTT broker: {mqtt_broker_host}")
+executor_agent = ExecutorAgent(broker_host=mqtt_broker_host, context_store=context_store)
+logger.info(f"🔧 Created executor agent with MQTT broker: {mqtt_broker_host} and context_store")
 
 user_prefs = UserPreferences()
 memory_agent = EnhancedMemoryAgent(context_store=context_store)
@@ -309,6 +320,32 @@ scheduler = Scheduler(context_store)
 scheduler_agent = SchedulerAgent(loop=asyncio.get_event_loop(), executor=None)
 sensor_agent = None  # Will be initialized in lifespan
 voice_agent = None  # Will be initialized in lifespan
+
+
+
+async def start_proactivity_loop():
+    """Background task to check for proactive suggestions."""
+    logger.info("🧠 Proactivity loop started")
+    while True:
+        try:
+            # Check for suggestions for known users (mock list for now or iterate active users)
+            # In a real app we'd iterate over all active users in DB
+            users = ["test_user", "default_user"] 
+            
+            for user_id in users:
+                suggestions = memory_agent.get_proactive_suggestions(user_id)
+                for suggestion in suggestions:
+                    # If high confidence, we could auto-execute or just log
+                    if suggestion['confidence'] > 0.85:
+                        logger.info(f"💡 High confidence suggestion for {user_id}: {suggestion['title']}")
+                        # Setup for auto-execution could go here
+                        
+            await asyncio.sleep(60) # check every minute
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in proactivity loop: {e}")
+            await asyncio.sleep(60)
 
 
 @asynccontextmanager
@@ -345,6 +382,34 @@ async def lifespan(app: FastAPI):
     enabled_flags = [k for k, v in flags_dict.items() if v]
     logger.info(f"Feature flags enabled: {enabled_flags}")
     logger.info(f"Settings summary: {settings_summary}")
+    # Initialize optional Postgres DB (if configured) so it's ready as single source of truth
+    if getattr(settings_v2, "POSTGRES_URL", None):
+        try:
+            await db_v2.init_db()
+            logger.info("✅ Postgres DB initialized")
+
+            try:
+                stored_devices = await db_v2.list_devices()
+                hydrated = 0
+
+                for device_id, device_data in stored_devices.items():
+                    state = device_data.get("state")
+                    if not isinstance(state, dict):
+                        logger.warning(f"⚠️ Skipping {device_id}: invalid or missing state")
+                        continue
+
+                    await context_store.async_update_observed_state(device_id, state)
+                    hydrated += 1
+
+                if hydrated == 0:
+                    logger.warning(f"⚠️ Hydrated 0 devices. DB Query Result Keys: {list(stored_devices.keys())}")
+                else:
+                    logger.info(f"✅ Hydrated ContextStore with {hydrated} devices from DB")
+
+            except Exception as e:
+                logger.exception(f"❌ Failed to hydrate ContextStore from DB: {e}")
+        except Exception as e:
+            logger.error(f"❌ Postgres DB connection failed: {e}")
     
     # Initialize sensor agent in background
     global sensor_agent, voice_agent
@@ -360,32 +425,11 @@ async def lifespan(app: FastAPI):
         context_store=context_store
     )
     
-    # Initialize voice agent with goal processor
-    try:
-        def voice_goal_processor(goal: str) -> Dict[str, Any]:
-            """Wrapper for voice agent goal processing"""
-            try:
-                # Use a default user for voice commands
-                result = asyncio.create_task(planner_agent.plan(goal, "voice_user"))
-                # Note: This is a simplified approach - in production you'd handle async properly
-                return {"success": True, "message": f"Voice command processed: {goal}"}
-            except Exception as e:
-                return {"success": False, "message": str(e)}
-        
-        # voice_agent = VoiceAgent(
-        #     goal_processor=voice_goal_processor,
-        #     enable_tts=True,
-        #     enable_wake_word=False,  # Can be enabled later
-        #     recognition_method="google"
-        # )
-        voice_agent = None  # Temporarily disabled for Docker compatibility
-        logger.info("✅ Voice Agent disabled for Docker compatibility")
-    except Exception as e:
-        logger.warning(f"Voice Agent initialization failed (optional): {e}")
-        voice_agent = None
-    
     # Start sensor monitoring in background task
     sensor_task = asyncio.create_task(start_sensor_monitoring())
+    
+    # Start proactivity loop
+    proactivity_task = asyncio.create_task(start_proactivity_loop())
 
     # Start scheduler agent and wire executor
     try:
@@ -414,8 +458,9 @@ async def lifespan(app: FastAPI):
 
     # Start periodic context snapshot task if persistence enabled
     snapshot_task = None
+    timeout_checker_task = None
     try:
-        from src.core import db_v2
+        from src.core import db_async as db_v2
         interval = int(getattr(settings_v2, 'CONTEXT_SNAPSHOT_INTERVAL_SECONDS', os.getenv('CONTEXT_SNAPSHOT_INTERVAL_SECONDS', '0')) or 0)
         if settings_v2.ENABLE_POSTGRES_MIGRATION and settings_v2.POSTGRES_URL and interval > 0:
             async def _snapshot_loop():
@@ -429,6 +474,22 @@ async def lifespan(app: FastAPI):
             snapshot_task = asyncio.create_task(_snapshot_loop())
     except Exception as e:
         logger.debug(f"Snapshot task not started: {e}")
+    
+    # Start timeout checker for two-phase state reconciliation
+    async def _timeout_checker_loop():
+        """Background task to mark timed-out commands as failed"""
+        while True:
+            try:
+                await context_store.async_check_timeouts()
+                await asyncio.sleep(1.0)  # Check every second
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Timeout checker error: {e}")
+                await asyncio.sleep(1.0)
+    
+    timeout_checker_task = asyncio.create_task(_timeout_checker_loop())
+    logger.info("✅ Two-phase state timeout checker started")
     
     logger.info("✅ Home Automation API Server started")
     
@@ -454,11 +515,28 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    
+    # Cancel proactivity task
+    if 'proactivity_task' in locals() and proactivity_task:
+        proactivity_task.cancel()
+        try:
+            await proactivity_task
+        except asyncio.CancelledError:
+            pass
+            
     # Cancel snapshot task
     if 'snapshot_task' in locals() and snapshot_task:
         snapshot_task.cancel()
         try:
             await snapshot_task
+        except asyncio.CancelledError:
+            pass
+    
+    # Cancel timeout checker task
+    if 'timeout_checker_task' in locals() and timeout_checker_task:
+        timeout_checker_task.cancel()
+        try:
+            await timeout_checker_task
         except asyncio.CancelledError:
             pass
     
@@ -535,7 +613,48 @@ class ScheduleResponse(BaseModel):
     data: Dict[str, Any]
 
 
+
+class CommandRequest(BaseModel):
+    action: str
+    value: Optional[Any] = None
+    params: Optional[Dict[str, Any]] = {}
+
+
 # API Endpoints
+
+@app.post("/devices/{device_id}/command")
+async def send_device_command(
+    device_id: str,
+    command: CommandRequest
+):
+    """
+    Send a command to a specific device.
+    
+    This endpoint validates the device exists (in config or as a fallback)
+    and dispatches the command via the appropriate protocol (MQTT/HTTP).
+    It returns immediately upon dispatch (fire-and-forget).
+    """
+    try:
+        task = {
+            "device": device_id,
+            "action": command.action,
+            "value": command.value
+        }
+        # Merge extra params if present
+        if command.params:
+            task.update(command.params)
+            
+        success = await executor_agent.execute(task)
+        
+        if success:
+             return {"status": "accepted", "device_id": device_id, "message": "Command dispatched"}
+        else:
+             raise HTTPException(status_code=500, detail="Failed to dispatch command")
+             
+    except Exception as e:
+        logger.error(f"Command execution error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/")
 async def root():
@@ -570,10 +689,16 @@ async def process_goal(
     start_time = datetime.now()
     
     try:
+        # Sanitize input: trim whitespace and newlines
+        goal = goal.strip()
+        
+        if not goal:
+            raise HTTPException(status_code=400, detail="Goal cannot be empty")
+        
         logger.info(f"Processing goal for user {user_id}: {goal}")
         
         # Log the goal request
-        memory_agent.add_entry(user_id, "goal_request", {
+        await memory_agent.add_entry(user_id, "goal_request", {
             "goal": goal,
             "timestamp": start_time.isoformat()
         })
@@ -608,7 +733,7 @@ async def process_goal(
         execution_time = (datetime.now() - start_time).total_seconds()
         
         # Log the execution results
-        memory_agent.add_entry(user_id, "goal_execution", {
+        await memory_agent.add_entry(user_id, "goal_execution", {
             "goal": goal,
             "tasks_planned": len(planned_tasks),
             "tasks_scheduled": len(scheduled_tasks),
@@ -627,14 +752,20 @@ async def process_goal(
             execution_time=execution_time
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 400 for empty goal)
+        raise
     except Exception as e:
-        logger.error(f"Goal processing failed: {e}")
-        memory_agent.add_entry(user_id, "goal_error", {
-            "goal": goal,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        raise HTTPException(status_code=500, detail=f"Goal processing failed: {e}")
+        logger.error(f"Goal processing failed: {e}", exc_info=True)
+        try:
+            await memory_agent.add_entry(user_id, "goal_error", {
+                "goal": goal if 'goal' in locals() else "unknown",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            })
+        except Exception:
+            pass  # Don't fail if logging fails
+        raise HTTPException(status_code=500, detail=f"Goal processing failed: {str(e)}")
 
 
 @app.post("/prefs/{user_id}", response_model=PreferenceResponse)
@@ -669,7 +800,7 @@ async def set_preference(
         user_prefs.set_preference(user_id, key, converted_value)
         
         # Log preference change
-        memory_agent.add_entry(user_id, "preference_change", {
+        await memory_agent.add_entry(user_id, "preference_change", {
             "key": key,
             "value": converted_value,
             "timestamp": datetime.now().isoformat()
@@ -706,6 +837,7 @@ async def get_system_state():
     """Get current system state from ContextStore."""
     try:
         state_dump = await context_store.async_dump()
+        logger.info(f"🔍 /state called. StoreID={id(context_store)} Items={len(state_dump.get('states', {}))}")
         
         return StateResponse(
             timestamp=datetime.now().isoformat(),
@@ -764,121 +896,8 @@ async def clear_user_history(user_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to clear history: {e}")
 
 
-# Voice Agent Endpoints
-
-class VoiceCommandRequest(BaseModel):
-    """Request model for voice commands."""
-    command: str
-    user_id: Optional[str] = "voice_user"
-
-
-class VoiceResponse(BaseModel):
-    """Response model for voice commands."""
-    success: bool
-    command: str
-    processed_goal: str
-    response: str
-    timestamp: str
-    confidence: float
-
-
-@app.post("/voice/command", response_model=VoiceResponse)
-async def process_voice_command(request: VoiceCommandRequest):
-    """Process a voice command through text input."""
-    if not voice_agent:
-        raise HTTPException(status_code=503, detail="Voice Agent not available")
-    
-    try:
-        # Process the command
-        result = voice_agent.process_single_command(request.command)
-        
-        return VoiceResponse(
-            success=True,
-            command=result.raw_text,
-            processed_goal=result.processed_goal,
-            response=result.response or "Command processed",
-            timestamp=result.timestamp.isoformat(),
-            confidence=result.confidence
-        )
-    except Exception as e:
-        logger.error(f"Error processing voice command: {e}")
-        raise HTTPException(status_code=500, detail=f"Error processing voice command: {e}")
-
-
-@app.post("/voice/start-listening")
-async def start_voice_listening():
-    """Start continuous voice listening."""
-    if not voice_agent:
-        raise HTTPException(status_code=503, detail="Voice Agent not available")
-    
-    try:
-        voice_agent.start_listening()
-        return {"message": "Voice listening started", "status": "listening"}
-    except Exception as e:
-        logger.error(f"Error starting voice listening: {e}")
-        raise HTTPException(status_code=500, detail=f"Error starting voice listening: {e}")
-
-
-@app.post("/voice/stop-listening")
-async def stop_voice_listening():
-    """Stop continuous voice listening."""
-    if not voice_agent:
-        raise HTTPException(status_code=503, detail="Voice Agent not available")
-    
-    try:
-        voice_agent.stop_listening()
-        return {"message": "Voice listening stopped", "status": "stopped"}
-    except Exception as e:
-        logger.error(f"Error stopping voice listening: {e}")
-        raise HTTPException(status_code=500, detail=f"Error stopping voice listening: {e}")
-
-
-@app.get("/voice/status")
-async def get_voice_status():
-    """Get voice agent status and statistics."""
-    if not voice_agent:
-        raise HTTPException(status_code=503, detail="Voice Agent not available")
-    
-    try:
-        stats = voice_agent.get_voice_stats()
-        return {
-            "voice_agent_available": True,
-            "stats": stats
-        }
-    except Exception as e:
-        logger.error(f"Error getting voice status: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting voice status: {e}")
-
-
-@app.get("/voice/history")
-async def get_voice_history(limit: int = Query(10, ge=1, le=100)):
-    """Get voice command history."""
-    if not voice_agent:
-        raise HTTPException(status_code=503, detail="Voice Agent not available")
-    
-    try:
-        history = voice_agent.get_command_history(limit)
-        return {
-            "history": history,
-            "total_commands": len(history)
-        }
-    except Exception as e:
-        logger.error(f"Error getting voice history: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting voice history: {e}")
-
-
-@app.post("/voice/speak")
-async def speak_text(text: str):
-    """Make the voice agent speak text (text-to-speech)."""
-    if not voice_agent:
-        raise HTTPException(status_code=503, detail="Voice Agent not available")
-    
-    try:
-        voice_agent.speak(text)
-        return {"message": f"Speaking: {text}", "text": text}
-    except Exception as e:
-        logger.error(f"Error speaking text: {e}")
-        raise HTTPException(status_code=500, detail=f"Error speaking text: {e}")
+# Voice Agent Endpoints - REMOVED for clarity and stability
+# (Voice claims removed as per audit requirements)
 
 
 # Behavioral Learning Endpoints
@@ -983,7 +1002,7 @@ async def execute_suggestion_action(user_id: str, request: SuggestionActionReque
                     memory_agent.dismiss_suggestion(user_id, request.suggestion_id)
                     
                     # Log the interaction
-                    memory_agent.add_entry(
+                    await memory_agent.add_entry(
                         user_id,
                         "suggestion_executed",
                         {
@@ -1106,6 +1125,7 @@ async def control_device(request: DeviceCommandRequest):
     start_time = datetime.now()
     
     try:
+        logger.info(f"API /devices/control called: device={request.device_id} action={request.action} user={request.user_id}")
         # Ensure executor is connected
         if not executor_agent._connected:
             await executor_agent.connect()
@@ -1118,11 +1138,19 @@ async def control_device(request: DeviceCommandRequest):
         if request.parameters:
             device_task.update(request.parameters)
         
-        # Execute directly
+        # Persist intended state to DB before publishing (executor will also persist)
+        try:
+            from src.core import db_async as db_v2
+            # derive device id
+            # (executor will also persist; we avoid double-calculation here)
+        except Exception:
+            pass
+
+        # Execute directly (ExecutorAgent will persist the intended state before publish)
         result = await executor_agent.execute(device_task)
         
         # Log the interaction
-        memory_agent.add_entry(
+        await memory_agent.add_entry(
             request.user_id or "api_user",
             "device_command",
             {
@@ -1158,22 +1186,60 @@ async def control_device(request: DeviceCommandRequest):
         )
 
 
+
+@app.post("/devices/{device_id}/command", response_model=DeviceControlResponse)
+async def device_command(device_id: str, request: DeviceCommandRequest):
+    """Per-device command endpoint that mirrors /devices/control but is easier for clients.
+
+    Accepts JSON body with action, optional parameters, and optional user_id.
+    """
+    start_time = datetime.now()
+    try:
+        logger.info(f"API /devices/{device_id}/command called: action={request.action} user={request.user_id}")
+        # ensure the device_id in URL and body match (or prefer URL)
+        request_device_id = request.device_id or device_id
+        request.device_id = request_device_id
+
+        # Reuse existing control_device logic
+        return await control_device(request)
+    except Exception as e:
+        logger.error(f"Error in /devices/{device_id}/command: {e}")
+        execution_time = (datetime.now() - start_time).total_seconds() * 1000
+        return DeviceControlResponse(
+            success=False,
+            device_id=device_id,
+            action=request.action if request else "",
+            result={"error": str(e)},
+            timestamp=start_time.isoformat(),
+            execution_time_ms=execution_time
+        )
+
+
 @app.post("/devices/{device_id}/toggle")
 async def toggle_device(device_id: str, user_id: str = Query("api_user")):
     """Toggle a device's state (on/off)."""
     try:
-        # Get current state to determine toggle action
-        current_state = context_store.get_state(f"home/{device_id.replace('.', '/')}/state")
-        
-        # Determine toggle action based on current state
-        if current_state and isinstance(current_state, dict):
-            current_power = current_state.get('state', 'off')
-            if current_power in ['on', 'true', True]:
-                action = 'turn_off'
-            else:
-                action = 'turn_on'
-        else:
-            action = 'turn_on'  # Default to turn on if state unknown
+        # Try to read current state from DB first (single source of truth)
+        action = 'turn_on'
+        try:
+            from src.core import db_async as db_v2
+            await db_v2.init_db()
+            db_dev = await db_v2.get_device_by_device_id(device_id)
+            if db_dev and hasattr(db_dev, 'current_state') and isinstance(getattr(db_dev, 'current_state', None), dict):
+                current_power = getattr(db_dev, 'current_state', {}).get('state', 'off')
+                if current_power in ['on', 'true', True]:
+                    action = 'turn_off'
+                else:
+                    action = 'turn_on'
+        except Exception:
+            # Fallback to context store if DB not available
+            current_state = context_store.get_state(f"home/{device_id.replace('.', '/')}/state")
+            if current_state and isinstance(current_state, dict):
+                current_power = current_state.get('state', 'off')
+                if current_power in ['on', 'true', True]:
+                    action = 'turn_off'
+                else:
+                    action = 'turn_on'
         
         # Execute toggle
         request = DeviceCommandRequest(
@@ -1216,33 +1282,74 @@ async def set_device_parameter(
 async def list_devices():
     """List all known devices and their current states."""
     try:
-        # Get all device states from context store
-        all_topics = await context_store.async_get_topics()
-        logger.info(f"📋 Available topics in context store (ID:{id(context_store)}): {all_topics}")
-        
-        devices = {}
-        for key in all_topics:
-            state = await context_store.async_get_state(key)
-            # Parse device info from key (e.g., "home/light/living_room/state")
-            parts = key.split('/')
-            if len(parts) >= 4 and parts[-1] == 'state':
-                device_type = parts[1]
-                device_name = parts[2]
-                device_id = f"{device_type}.{device_name}"
-                
-                devices[device_id] = {
-                    "device_id": device_id,
-                    "type": device_type,
-                    "name": device_name,
-                    "state": state,
-                    "last_updated": state.get('timestamp') if isinstance(state, dict) else None
+        # Prefer DB-backed device list as single source of truth
+        try:
+            from src.core import db_async as db_v2
+            await db_v2.init_db()
+            devices = await db_v2.list_devices()
+            logger.info(f"📊 DB query returned {len(devices)} devices")
+            if devices:  # Only use DB if it has devices
+                return {
+                    "devices": devices,
+                    "total_devices": len(devices),
+                    "retrieved_at": datetime.now().isoformat()
                 }
-        
-        return {
-            "devices": devices,
-            "total_devices": len(devices),
-            "retrieved_at": datetime.now().isoformat()
-        }
+            else:
+                logger.info("📊 DB is empty, falling back to ContextStore")
+                raise Exception("DB empty, use ContextStore fallback")
+        except Exception as e:
+            logger.info(f"📊 Using ContextStore fallback (reason: {str(e)[:50]})")
+            # Fallback to ContextStore
+            all_topics = await context_store.async_get_topics()
+            logger.info(f"📋 Available topics in context store (ID:{id(context_store)}): {all_topics}")
+            
+            devices = {}
+            
+            # New format: devices/{device_id}/observed
+            for key in all_topics:
+                if key.startswith("devices/") and key.endswith("/observed"):
+                    # Extract device_id from key: devices/temperature.living_room/observed -> temperature.living_room
+                    device_id = key.replace("devices/", "").replace("/observed", "")
+                    state = await context_store.async_get_state(key)
+                    
+                    # Parse device_id: temperature.living_room -> type=temperature, name=living_room
+                    parts = device_id.split('.')
+                    if len(parts) >= 2:
+                        device_type = parts[0]
+                        device_name = '.'.join(parts[1:])  # Handle multi-part names
+                        
+                        devices[device_id] = {
+                            "device_id": device_id,
+                            "type": device_type,
+                            "name": device_name,
+                            "state": state,
+                            "last_updated": state.get('last_seen') or state.get('timestamp') if isinstance(state, dict) else None
+                        }
+            
+            # Legacy fallback: home/{type}/{location}/state format
+            if not devices:
+                for key in all_topics:
+                    # Parse device info from key (e.g., "home/light/living_room/state")
+                    parts = key.split('/')
+                    if len(parts) >= 4 and parts[0] == 'home' and parts[-1] == 'state':
+                        device_type = parts[1]
+                        device_name = parts[2]
+                        device_id = f"{device_type}.{device_name}"
+                        state = await context_store.async_get_state(key)
+                        
+                        devices[device_id] = {
+                            "device_id": device_id,
+                            "type": device_type,
+                            "name": device_name,
+                            "state": state,
+                            "last_updated": state.get('timestamp') if isinstance(state, dict) else None
+                        }
+
+            return {
+                "devices": devices,
+                "total_devices": len(devices),
+                "retrieved_at": datetime.now().isoformat()
+            }
         
     except Exception as e:
         logger.error(f"Error listing devices: {e}")
@@ -1253,28 +1360,61 @@ async def list_devices():
 async def get_device_status(device_id: str):
     """Get detailed status of a specific device."""
     try:
-        # Convert device_id to state key
-        parts = device_id.split('.')
-        if len(parts) != 2:
-            raise HTTPException(status_code=400, detail="Device ID must be in format 'type.name'")
-        
-        device_type, device_name = parts
-        state_key = f"home/{device_type}/{device_name}/state"
-        
-        # Get device state
-        state = context_store.get_state(state_key)
-        
-        if state is None:
-            raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
-        
-        return {
-            "device_id": device_id,
-            "type": device_type,
-            "name": device_name,
-            "state": state,
-            "state_key": state_key,
-            "retrieved_at": datetime.now().isoformat()
-        }
+        # Prefer DB-backed device status
+        try:
+            from src.core import db_async as db_v2
+            await db_v2.init_db()
+            db_dev = await db_v2.get_device_by_device_id(device_id)
+            if not db_dev:
+                raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+            return {
+                "device_id": getattr(db_dev, 'device_id', device_id),
+                "type": getattr(db_dev, 'device_type', None),
+                "name": getattr(db_dev, 'name', None),
+                "state": getattr(db_dev, 'current_state', None),
+                "state_key": f"home/{getattr(db_dev, 'device_type', '')}/{getattr(db_dev, 'name', '')}/state",
+                "retrieved_at": datetime.now().isoformat()
+            }
+        except HTTPException:
+            raise
+        except Exception:
+            # Fallback to ContextStore
+            parts = device_id.split('.')
+            if len(parts) != 2:
+                raise HTTPException(status_code=400, detail="Device ID must be in format 'type.name'")
+
+            device_type, device_name = parts
+            
+            # Try legacy topic key first
+            state_key = f"home/{device_type}/{device_name}/state"
+            state = context_store.get_state(state_key)
+            
+            # If not found, try the new persistent observed key format
+            if state is None:
+                obs_key = f"devices/{device_id}/observed"
+                obs_state = context_store.get_state(obs_key)
+                if obs_state:
+                    state = obs_state
+                    state_key = obs_key
+
+            if state is None:
+                raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+            # Handle the case where state is a dict wrapper or raw value
+            if isinstance(state, dict):
+                # If wrapped in "state" key or similar, extract or return full
+                # The ContextStore usually stores the full payload from sensor
+                pass
+
+            return {
+                "device_id": device_id,
+                "type": device_type,
+                "name": device_name,
+                "state": state,
+                "state_key": state_key,
+                "retrieved_at": datetime.now().isoformat()
+            }
         
     except HTTPException:
         raise
@@ -1334,7 +1474,7 @@ async def batch_device_control(request: BatchDeviceRequest):
                     })
                 
                 # Log each command
-                memory_agent.add_entry(
+                await memory_agent.add_entry(
                     request.user_id or "api_user",
                     "device_command",
                     {
@@ -1365,7 +1505,7 @@ async def batch_device_control(request: BatchDeviceRequest):
                     })
                     
                     # Log the command
-                    memory_agent.add_entry(
+                    await memory_agent.add_entry(
                         request.user_id or "api_user",
                         "device_command",
                         {

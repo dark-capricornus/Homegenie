@@ -48,5 +48,25 @@ letsencrypt/
 
 # Documentation artifacts
 documents/
-
+docs/
 docker/mosquitto/data/mosquitto.db
+
+#test files
+tests/
+
+.env
+.env.example
+logs/
+env/
+.vscode/
+alembic/
+.pytest_cache/
+.mypy_cache/
+.scripts/
+.vscode/
+scripts/
+*.ini
+*.bat
+*.txt
+pgdata/
+pgdata

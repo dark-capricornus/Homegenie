@@ -13,6 +13,8 @@ dependencies:
   http: ^1.1.0
   cupertino_icons: ^1.0.2
   logging: ^1.2.0
+  shared_preferences: ^2.0.15
+  mqtt_client: ^9.0.4
 
 dev_dependencies:
   flutter_test:

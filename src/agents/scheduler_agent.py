@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import typing
 from typing import Optional, Dict, Any, Callable
 from datetime import datetime, timezone, timedelta
 
-from src.core import db_v2
+from src.core import db_async as db_v2
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +54,21 @@ class SchedulerAgent:
             task.cancel()
         self._tasks.clear()
 
-    async def schedule_job(self, job: Dict[str, Any]) -> int:
+    async def schedule_job(self, job: Dict[str, Any]) -> Optional[int]:
         """Persist job and schedule it. Job may include run_at (ISO) or delay_seconds."""
         job_id = await db_v2.save_schedule_job(job)
         # fetch created job row
-        jobs = await db_v2.get_schedule_jobs(job_id=job_id)
-        if jobs:
-            await self._schedule_db_job(jobs[0])
-        return job_id
+        try:
+            jobs = await db_v2.get_schedule_jobs(job_id=job_id)
+            if jobs:
+                await self._schedule_db_job(jobs[0])
+        except Exception:
+            logger.debug("Could not fetch scheduled job row after save; continuing")
+        if isinstance(job_id, int):
+            return job_id
+        if isinstance(job_id, str) and job_id.isdigit():
+            return int(job_id)
+        return -1
 
     async def _schedule_db_job(self, job_row):
         """Create an asyncio Task to execute the job when its run_at arrives."""

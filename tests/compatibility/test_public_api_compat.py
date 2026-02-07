@@ -8,7 +8,7 @@ import pytest
 
 try:
     import httpx
-except Exception:  # pragma: no cover - httpx optional in CI
+except Exception: 
     httpx = None
 
 

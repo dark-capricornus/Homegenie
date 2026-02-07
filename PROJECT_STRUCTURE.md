@@ -93,7 +93,7 @@ cd /home/harish/Desktop/Homegenie
 docker-compose up --build -d
 
 # 3. Verify everything works
-curl http://10.132.71.35:8080/health
+curl http://localhost:8080/health
 
 # 4. Run Flutter app
 cd frontend && flutter run
@@ -145,4 +145,4 @@ The HomeGenie project now has a **clean, maintainable structure** optimized for:
 - ✅ Team collaboration
 - ✅ Production deployment
 
-**All core functionality preserved - system ready for use on `10.132.71.35:8080`**
+**All core functionality preserved - system ready for use on `localhost:8080`**

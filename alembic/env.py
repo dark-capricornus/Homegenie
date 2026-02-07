@@ -43,7 +43,7 @@ from sqlmodel import SQLModel
 # Import application's models so they are in metadata
 # (db_v2 defines ContextSnapshot as table=True)
 try:
-    import src.core.db_v2 as db_v2  # noqa: F401
+    import src.core.db_async as db_v2  # noqa: F401
 except Exception:
     # If import fails, we'll still use SQLModel.metadata if available
     db_v2 = None

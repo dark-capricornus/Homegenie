@@ -1,0 +1,18 @@
+[
+    {
+        "id": "light.living_room",
+        "protocol": "mqtt",
+        "topic": "home/light/living_room/set",
+        "qos": 0,
+        "retain": false,
+        "enabled": true
+    },
+    {
+        "id": "thermostat.main",
+        "protocol": "http",
+        "command_url": "http://host.docker.internal:9000/set",
+        "method": "POST",
+        "timeout": 3,
+        "enabled": true
+    }
+]

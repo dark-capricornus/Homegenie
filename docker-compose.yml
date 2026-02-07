@@ -5,7 +5,7 @@ services:
     container_name: homegenie-mqtt
     ports:
       - "1883:1883"
-      - "9003:9001"
+      # - "9003:9001" # Disable WebSocket for UI to enforce API path
     volumes:
       - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mqtt-data:/mosquitto/data
@@ -14,7 +14,7 @@ services:
       - homegenie-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "test", "-m", "test"]
+      test: [ "CMD", "mosquitto_pub", "-h", "localhost", "-t", "test", "-m", "test" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -26,13 +26,13 @@ services:
       dockerfile: Dockerfile.unified
     container_name: homegenie-app
     ports:
-      - "8080:8000"   # API
-      - "8000:8000"   # direct app port
-      - "3000:3000"   # web UI
+      - "8080:8000" # API
+      - "8000:8000" # direct app port
+      - "3000:3000" # web UI
     environment:
       - MQTT_BROKER_HOST=mqtt-broker
       - MQTT_BROKER_PORT=1883
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=DEBUG
       - API_HOST=0.0.0.0
       - API_PORT=8000
 
@@ -47,8 +47,10 @@ services:
       - ENABLE_POSTGRES_MIGRATION=true
 
     depends_on:
-      - mqtt-broker
-      - globalone
+      mqtt-broker:
+        condition: service_started
+      globalone:
+        condition: service_healthy
 
     volumes:
       - ./logs:/app/logs
@@ -72,7 +74,7 @@ services:
       - homegenie-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U homegenie -d homegenie_db"]
+      test: [ "CMD-SHELL", "pg_isready -U homegenie -d homegenie_db" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -103,7 +105,7 @@ services:
     depends_on:
       - mqtt-broker
       - globalone
-    command: ["uvicorn", "src.api.api_server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: [ "uvicorn", "src.api.api_server:app", "--host", "0.0.0.0", "--port", "8000", "--reload" ]
     networks:
       - homegenie-net
     restart: unless-stopped

@@ -9,6 +9,7 @@ import logging
 import random
 import threading
 import time
+import os
 from datetime import datetime
 from typing import Dict, Any
 
@@ -40,9 +41,110 @@ class SimpleMQTTSimulator:
         logger.info(f"SimpleMQTTSimulator initialized for {broker_host}:{broker_port}")
     
     def _create_devices(self) -> Dict[str, Dict[str, Any]]:
-        """Create sample devices."""
+        """Create devices from config file or fallback to samples."""
+        devices = {}
+        
+        # Try to load from config file
+        config_paths = [
+            os.getenv('DEVICES_CONFIG_PATH', ''),
+            '/app/config/devices.json',
+            'config/devices.json',
+            '../config/devices.json',
+            'docker/simulators/devices.json'
+        ]
+        
+        for path in config_paths:
+            if not path or not os.path.exists(path):
+                continue
+                
+            try:
+                logger.info(f"Loading devices from {path}...")
+                with open(path, 'r') as f:
+                    config = json.load(f)
+                    
+                for category, device_list in config.items():
+                    for d in device_list:
+                        # Normalize fields
+                        device_type = category
+                        # Handle switch/fan ambiguity if needed, otherwise rely on category
+                        if category == 'switch' and d.get('id', '').startswith('fan_'):
+                            device_type = 'fan'
+                            
+                        location_raw = d.get('location', 'unknown')
+                        location = location_raw.lower().replace(' ', '_')
+                        
+                        # Generate unique key
+                        key = f"{device_type}.{location}"
+                        
+                        # Build device state
+                        device_state = {
+                            "device_type": device_type,
+                            "location": location,
+                            "name": d.get('name', f"{device_type} {location}"),
+                            "online": True,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        
+                        # Type-specific defaults
+                        if device_type == "light":
+                            device_state.update({
+                                "state": "on" if d.get("initial_brightness", 0) > 0 else "off",
+                                "brightness": d.get("initial_brightness", 0),
+                                "color": "white",
+                                "power_consumption": 0.0
+                            })
+                        elif device_type == "switch":
+                            device_state.update({
+                                "state": "on" if d.get("initial_state", False) else "off",
+                                "power_consumption": 0.0
+                            })
+                        elif device_type == "fan":
+                            device_state.update({
+                                "state": "off",
+                                "speed": 0,
+                                "power_consumption": 0.0
+                            })
+                        elif device_type == "lock":
+                            device_state.update({
+                                "locked": d.get("initial_locked", True),
+                                "battery": 100,
+                                "last_access": datetime.now().isoformat()
+                            })
+                        elif device_type == "thermostat":
+                            device_state.update({
+                                "temperature": d.get("initial_temperature", 22.0),
+                                "target": d.get("initial_temperature", 22.0),
+                                "mode": "auto",
+                                "humidity": 50
+                            })
+                        elif device_type == "sensor":
+                            sensor_type = d.get("sensor_type", "generic")
+                            device_state.update({
+                                "value": 0.0,
+                                "battery": 100
+                            })
+                            if sensor_type == "motion":
+                                device_state["detected"] = False
+                                device_state["confidence"] = 0.0
+                            elif sensor_type == "temperature":
+                                device_state["value"] = 20.0
+                                device_state["unit"] = "C"
+                            elif sensor_type == "humidity":
+                                device_state["value"] = 50.0
+                                device_state["unit"] = "%"
+                        
+                        devices[key] = device_state
+                        
+                logger.info(f"✅ Loaded {len(devices)} devices from config")
+                return devices
+                
+            except Exception as e:
+                logger.error(f"Failed to load config from {path}: {e}")
+
+        logger.warning("⚠️ No config file found, using hardcoded fallback devices")
         return {
             "light.living_room": {
+
                 "device_type": "light",
                 "location": "living_room", 
                 "name": "Living Room Light",
