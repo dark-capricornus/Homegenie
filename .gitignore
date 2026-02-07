@@ -63,10 +63,8 @@ alembic/
 .pytest_cache/
 .mypy_cache/
 .scripts/
-.vscode/
-scripts/
+
 *.ini
 *.bat
 *.txt
 pgdata/
-pgdata
