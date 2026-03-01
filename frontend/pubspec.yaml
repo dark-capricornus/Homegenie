@@ -15,7 +15,7 @@ dependencies:
   logging: ^1.2.0
   shared_preferences: ^2.0.15
   mqtt_client: ^9.0.4
-
+  record: ^5.0.5
 dev_dependencies:
   flutter_test:
     sdk: flutter

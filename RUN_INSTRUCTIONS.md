@@ -96,6 +96,18 @@ API health (container exposes FastAPI on port 8000 by default; some compose mapp
 curl http://localhost:8000/health
 ```
 
+### Exposing the API to the Internet (ngrok & n8n)
+
+If you are integrating with cloud services like **n8n Cloud**, you **do not** need to run the server manually again. Docker already maps port `8000` to your local machine (`http://localhost:8000`).
+
+Simply open a new terminal and run:
+
+```cmd
+ngrok http 8000
+```
+
+Copy the `https://...` forwarding URL provided by ngrok and use it in your n8n HTTP Request nodes. The internet traffic will automatically route into your running `homegenie-app` Docker container.
+
 ## 2) Run backend locally (no Docker) — quick dev loop
 
 Use the provided venv (recommended) or create a new one.

@@ -398,28 +398,31 @@ class SensorAgent:
                 else:
                     logger.error(f"Failed to upsert device state into DB: {e}", exc_info=True)
 
-        # Update in-memory context store
+        # Update in-memory context store and trigger n8n autonomously
         try:
-            # TWO-PHASE STATE: Write observed state ONLY
-            # SensorAgent is the SOLE authority for confirming success/failure
-            # ContextStore will automatically reconcile with commanded state
             if self.context_store and device_id:
+                # 1. Fetch old state to calculate differences
+                old_state = await self.context_store.async_get_state(f"devices/{device_id}/observed")
+
+                # 2. Write new observed state
                 await self.context_store.async_update_observed_state(device_id, data)
                 logger.info(f"✅ Observed state written to StoreID={id(self.context_store)} for {device_id}")
+
+                # 3. Evaluate if we should fire an autonomous trigger to n8n
+                if old_state:
+                    old_val = old_state.get("state")
+                    new_val = data.get("state")
+                    if old_val != new_val:
+                        # State changed autonomously!
+                        asyncio.create_task(self._trigger_n8n_autonomous(device_id, data))
             else:
                 # Fallback to old method if no device_id or context_store
-                # ContextStore expects key 'home/type/location/state'
-                # If topic matches, use it.
                 store_key = topic
                 cs_payload = {"state": data.get("state"), "timestamp": data.get("ts"), **data}
                 
-                # Use async update if available, or sync
                 if hasattr(self.context_store, "async_update_state"):
                     if self._loop:
                          asyncio.run_coroutine_threadsafe(self.context_store.async_update_state(store_key, cs_payload), self._loop)
-                    else:
-                        # Best effort fallback
-                        pass
                 elif hasattr(self.context_store, "update_state"):
                     self.context_store.update_state(store_key, cs_payload)
                 
@@ -433,6 +436,21 @@ class SensorAgent:
                 self.on_message_callback(topic, data)
         except Exception:
             logger.exception("on_message_callback raised an exception")
+
+    async def _trigger_n8n_autonomous(self, device_id: str, data: dict) -> None:
+        """Fire a webhook to n8n for autonomous orchestrating."""
+        webhook_url = os.getenv("N8N_AUTONOMOUS_WEBHOOK", "http://n8n:5678/webhook/homegenie-autonomous")
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                payload = {
+                    "event": "sensor_update",
+                    "device_id": device_id,
+                    "state": data
+                }
+                await client.post(webhook_url, json=payload)
+                logger.debug(f"🤖 Fired autonomous n8n trigger for {device_id}")
+        except Exception as e:
+            logger.warning(f"Failed to trigger autonomous n8n webhook: {e}")
 
     def on_message(self, client, userdata, message) -> None:
         """Paho MQTT on_message callback — runs on a background thread.

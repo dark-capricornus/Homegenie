@@ -53,26 +53,35 @@ class PlannerAgent:
             List of task dicts (e.g. [{"device": "light.main", "action": "turn_on"}]).
         """
         # 1. Gather Context
-        if context is None and self.context_store is not None:
-            try:
-                context = await self.context_store.async_dump()
-            except Exception:
+        if context is None:
+            if self.context_store is not None:
+                try:
+                    context = await self.context_store.async_dump()
+                except Exception:
+                    context = {}
+            else:
                 context = {}
 
-        # 2. Try LLM Planning (with workload isolation)
+        # 2. Try LLM Planning
         if self.llm_enabled and self.llm_client:
             try:
-                # Run LLM in background thread pool with timeout
-                # This prevents blocking the main asyncio loop
-                loop = asyncio.get_running_loop()
-                plan = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        self._llm_executor,
-                        self._llm_plan_sync,  # Synchronous version
-                        goal, context, user_id
-                    ),
-                    timeout=10.0  # 10 second max for LLM response
-                )
+                if asyncio.iscoroutinefunction(self.llm_client):
+                    # Async client support (mostly for tests)
+                    payload = self._construct_llm_payload(goal, context)
+                    response = await asyncio.wait_for(self.llm_client(payload), timeout=10.0)
+                    plan = self._parse_llm_response(response)
+                else:
+                    # Sync client via ThreadPoolExecutor (Standard isolation)
+                    loop = asyncio.get_running_loop()
+                    plan = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            self._llm_executor,
+                            self._llm_plan_sync,
+                            goal, context, user_id
+                        ),
+                        timeout=10.0
+                    )
+                
                 if plan:
                     logger.info(f"✅ LLM plan generated for goal: {goal}")
                     return plan
@@ -85,14 +94,8 @@ class PlannerAgent:
         return self._structured_fallback_plan(goal)
 
 
-    def _llm_plan_sync(self, goal: str, context: Dict[str, Any], user_id: str | None) -> List[Dict[str, Any]]:
-        """
-        Synchronous LLM planning method for ThreadPoolExecutor.
-        This runs in a background thread to avoid blocking the main asyncio loop.
-        
-        Use the LLM client to parse intent and generate strict JSON plan.
-        """
-        # Construct a prompt that enforces valid JSON output
+    def _construct_llm_payload(self, goal: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Utility to build the payload for the LLM."""
         system_prompt = (
             "You are a Smart Home Agent. Your task is to convert user goals into a JSON execution plan.\n"
             "Available devices: " + json.dumps(list(context.get('states', {}).keys())) + "\n"
@@ -100,31 +103,43 @@ class PlannerAgent:
             "Example: [{'device': 'light.living_room', 'action': 'turn_on', 'value': true}]\n"
             "Do NOT output markdown, just the JSON."
         )
-        
-        payload = {
+        return {
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": goal}
             ],
             "temperature": 0.1
         }
+
+
+    def _llm_plan_sync(self, goal: str, context: Dict[str, Any], user_id: str | None) -> List[Dict[str, Any]]:
+        """Synchronous version for ThreadPoolExecutor."""
+        payload = self._construct_llm_payload(goal, context)
         
         logger.info(f"🧠 Asking LLM to plan (background thread): {goal}")
         
-        # Call LLM client (blocking call, but we're in a thread pool)
         if callable(self.llm_client):
             response = self.llm_client(payload)
+            return self._parse_llm_response(response)
+        return []
+
+
+    def _parse_llm_response(self, response: Any) -> List[Dict[str, Any]]:
+        """Robust parser for LLM responses (handles lists, dicts, and JSON strings)."""
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            if "plan" in response: return response["plan"]
+            if "content" in response: content = response["content"]
+            else: content = str(response)
         else:
-            return []
+            content = str(response)
             
-        # Parse response (assuming client returns dict with 'content' or direct string)
-        content = response.get("content", "") if isinstance(response, dict) else str(response)
-        
-        # Clean markdown code blocks if present
+        # Clean markdown code blocks
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
-            content = content.split("```")[1].strip()
+            content = content.split("```")[1].split("```")[0].strip()
             
         try:
             plan = json.loads(content)
@@ -133,7 +148,13 @@ class PlannerAgent:
             elif isinstance(plan, dict) and "plan" in plan:
                 return plan["plan"]
         except json.JSONDecodeError:
-            logger.error(f"Failed to parse LLM response: {content}")
+            # Try to handle single quote 'JSON' (not valid but common in LLM outputs if not forced)
+            try:
+                # Replace ' with " and try again (naive fix)
+                plan = json.loads(content.replace("'", '"'))
+                if isinstance(plan, list): return plan
+            except Exception:
+                logger.error(f"Failed to parse LLM response: {content}")
             
         return []
 

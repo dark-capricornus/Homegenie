@@ -1,0 +1,140 @@
+{
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "R001",
+      "name": "Low Emergency Fund Alert",
+      "priority": 10,
+      "enabled": true,
+      "conditions": [
+        {
+          "field": "finance.savings.emergency",
+          "operator": "<",
+          "value": 300000
+        }
+      ],
+      "outcome": {
+        "type": "ALERT",
+        "code": "LOW_EMERGENCY_FUND",
+        "metadata": {
+          "severity": "high",
+          "category": "finance"
+        }
+      }
+    },
+    {
+      "id": "R002",
+      "name": "High Spending Warning",
+      "priority": 5,
+      "enabled": true,
+      "conditions": [
+        {
+          "field": "finance.spending.monthly",
+          "operator": ">",
+          "value": 50000
+        },
+        {
+          "field": "finance.income.monthly",
+          "operator": "<",
+          "value": 60000
+        }
+      ],
+      "outcome": {
+        "type": "WARNING",
+        "code": "SPENDING_EXCEEDS_INCOME",
+        "metadata": {
+          "severity": "medium",
+          "category": "finance"
+        }
+      }
+    },
+    {
+      "id": "R003",
+      "name": "Device Offline Check",
+      "priority": 3,
+      "enabled": true,
+      "conditions": [
+        {
+          "field": "devices.living_room.light.status",
+          "operator": "==",
+          "value": "offline"
+        }
+      ],
+      "outcome": {
+        "type": "WARNING",
+        "code": "DEVICE_OFFLINE",
+        "metadata": {
+          "severity": "low",
+          "category": "devices"
+        }
+      }
+    },
+    {
+      "id": "R004",
+      "name": "System Health Check",
+      "priority": 1,
+      "enabled": true,
+      "conditions": [
+        {
+          "field": "system.health.cpu",
+          "operator": "exists"
+        },
+        {
+          "field": "system.health.memory",
+          "operator": "exists"
+        }
+      ],
+      "outcome": {
+        "type": "INFO",
+        "code": "SYSTEM_HEALTHY",
+        "metadata": {
+          "severity": "info",
+          "category": "system"
+        }
+      }
+    },
+    {
+      "id": "R005",
+      "name": "Temperature In Range",
+      "priority": 2,
+      "enabled": true,
+      "conditions": [
+        {
+          "field": "devices.bedroom.temperature",
+          "operator": ">=",
+          "value": 18
+        },
+        {
+          "field": "devices.bedroom.temperature",
+          "operator": "<=",
+          "value": 25
+        }
+      ],
+      "outcome": {
+        "type": "INFO",
+        "code": "TEMPERATURE_OPTIMAL",
+        "metadata": {
+          "severity": "info",
+          "category": "comfort"
+        }
+      }
+    },
+    {
+      "id": "R006",
+      "name": "Disabled Rule Example",
+      "priority": 100,
+      "enabled": false,
+      "conditions": [
+        {
+          "field": "test.field",
+          "operator": "==",
+          "value": "test"
+        }
+      ],
+      "outcome": {
+        "type": "INFO",
+        "code": "DISABLED_RULE_SHOULD_NOT_FIRE"
+      }
+    }
+  ]
+}

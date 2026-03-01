@@ -9,7 +9,7 @@ import asyncio
 import threading
 import json
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 
 
 class ContextStore:
@@ -37,7 +37,7 @@ class ContextStore:
         """
         with self._lock:
             self._states[topic] = payload
-            self._last_updated[topic] = datetime.now()
+            self._last_updated[topic] = datetime.now(timezone.utc)
     
     async def async_update_state(self, topic: str, payload: Any) -> None:
         """
@@ -49,7 +49,7 @@ class ContextStore:
         """
         async with self._async_lock:
             self._states[topic] = payload
-            self._last_updated[topic] = datetime.now()
+            self._last_updated[topic] = datetime.now(timezone.utc)
 
     def update_probe_status(self, name: str, status: str, state: Optional[Dict[str, Any]] = None, error: Optional[str] = None, last_seen: Optional[datetime] = None) -> None:
         """
@@ -64,7 +64,7 @@ class ContextStore:
         """
         payload = {
             "status": status,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if state is not None:
             payload["state"] = state
@@ -79,7 +79,7 @@ class ContextStore:
         """Async version of update_probe_status."""
         payload = {
             "status": status,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if state is not None:
             payload["state"] = state

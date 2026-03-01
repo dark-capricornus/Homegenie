@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+import 'package:record/record.dart';
 import 'package:homegenie_app/network/api_locator.dart';
 import 'package:homegenie_app/screens/server_settings.dart';
 import 'package:homegenie_app/network/mqtt_service.dart';
@@ -248,34 +249,40 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
     }
   }
 
-  Future<void> _executeGoal(String goal) async {
+  Future<void> _sendToN8n(String message) async {
     setState(() {
       isProcessingGoal = true;
-      statusMessage = 'Processing "$goal"...';
+      statusMessage = 'Sending command to AI Orchestrator...';
     });
 
     try {
+      final apiUrl = await ApiLocator.getBaseUrl();
+      final n8nWebhookUrl = '$apiUrl/chat/n8n';
+      
       final response = await http.post(
-        Uri.parse('$baseUrl/goal/$userId?goal=${Uri.encodeComponent(goal)}'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse(n8nWebhookUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-HomeGenie-Token': 'homegenie_dev_token_123',
+        },
+        body: json.encode({'message': message}),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         setState(() {
-          statusMessage = 'Success: ${data['message'] ?? 'Goal executed'}';
+          statusMessage = 'Command executed via n8n Orchestrator!';
         });
         // Wait a moment then refresh the states
-        await Future.delayed(const Duration(seconds: 1));
+        await Future.delayed(const Duration(seconds: 2));
         await _fetchDeviceStates();
       } else {
         setState(() {
-          statusMessage = 'Failed to execute goal: ${response.statusCode}';
+          statusMessage = 'Failed to execute via n8n: ${response.statusCode}';
         });
       }
     } catch (e) {
       setState(() {
-        statusMessage = 'Error executing goal: $e';
+        statusMessage = 'Error connecting to n8n webhook: $e';
       });
     } finally {
       setState(() {
@@ -328,8 +335,8 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
             actions: [
               IconButton(
                 onPressed: () => _showVoiceControlDialog(),
-                icon: const Icon(Icons.mic, color: Colors.white),
-                tooltip: 'Voice Control',
+                icon: const Icon(Icons.chat, color: Colors.white),
+                tooltip: 'Chat with n8n AI',
               ),
               IconButton(
                 onPressed: () async {
@@ -509,37 +516,102 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
     );
   }
 
-  // Voice Control Dialog
+  // Voice Control / Audio Record Dialog
   void _showVoiceControlDialog() {
+    final record = AudioRecorder();
+    bool isRecording = false;
+    bool isTranscribing = false;
+
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.mic, color: Colors.blue),
-              SizedBox(width: 8),
-              Text('Voice Control'),
-            ],
-          ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Voice control is coming soon!'),
-              SizedBox(height: 16),
-              Text('You\'ll be able to say things like:'),
-              SizedBox(height: 8),
-              Text('• "Turn on the living room lights"'),
-              Text('• "Make it cozy"'),
-              Text('• "Set bedroom temperature to 72"'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Got it'),
-            ),
-          ],
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateBuilder) {
+            Future<void> stopRecording() async {
+              setStateBuilder(() => isRecording = false);
+              setStateBuilder(() => isTranscribing = true);
+              try {
+                final path = await record.stop();
+                if (path != null) {
+                  // Fetch the audio bytes from the blob URL or local path
+                  final uri = Uri.parse(path);
+                  var response = await http.get(uri);
+                  var audioBytes = response.bodyBytes;
+                  
+                  // Send to python backend transcriber wrapper
+                  final apiUrl = await ApiLocator.getBaseUrl();
+                  var request = http.MultipartRequest('POST', Uri.parse('$apiUrl/voice/transcribe'));
+                  request.headers['X-HomeGenie-Token'] = 'homegenie_dev_token_123';
+                  request.files.add(http.MultipartFile.fromBytes('file', audioBytes, filename: 'audio.webm'));
+                  
+                  final streamedResponse = await request.send();
+                  final res = await http.Response.fromStream(streamedResponse);
+                  
+                  if (res.statusCode >= 200 && res.statusCode < 300) {
+                     setState(() {
+                       statusMessage = "Voice command executed via Agent Orchestrator!";
+                     });
+                     // Refresh
+                     await Future.delayed(const Duration(seconds: 2));
+                     await _fetchDeviceStates();
+                  } else {
+                     setState(() {
+                       statusMessage = "Voice Transcription failed: ${res.statusCode}";
+                     });
+                  }
+                }
+              } catch (e) {
+                _logger.severe('Voice upload error: $e');
+              }
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
+              }
+              record.dispose();
+            }
+
+            Future<void> startRecording() async {
+              if (await record.hasPermission()) {
+                await record.start(RecordConfig(encoder: AudioEncoder.opus), path: '');
+                setStateBuilder(() => isRecording = true);
+              }
+            }
+
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.mic, color: Colors.blue),
+                  SizedBox(width: 8),
+                  Text('Agentic Voice Command'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  isTranscribing 
+                    ? const CircularProgressIndicator()
+                    : IconButton(
+                        iconSize: 64,
+                        color: isRecording ? Colors.red : Colors.blue,
+                        icon: Icon(isRecording ? Icons.stop_circle : Icons.mic),
+                        onPressed: isRecording ? stopRecording : startRecording,
+                      ),
+                  const SizedBox(height: 16),
+                  Text(isTranscribing ? 'Transcribing & routing via n8n...' : (isRecording ? 'Listening...' : 'Tap Mic to speak to HomeGenie')),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isTranscribing ? null : () {
+                    if (isRecording) record.stop();
+                    record.dispose();
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Cancel'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -586,7 +658,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
                   'Make it Cozy',
                   Icons.home,
                   Colors.orange,
-                  () => _executeGoal('make it cozy'),
+                  () => _sendToN8n('make it cozy'),
                 ),
               ),
               const SizedBox(width: 8),
@@ -595,7 +667,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
                   'Save Energy',
                   Icons.eco,
                   Colors.green,
-                  () => _executeGoal('save energy'),
+                  () => _sendToN8n('save energy'),
                 ),
               ),
               const SizedBox(width: 8),
@@ -604,7 +676,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> {
                   'Goodnight',
                   Icons.bedtime,
                   Colors.indigo,
-                  () => _executeGoal('goodnight'),
+                  () => _sendToN8n('goodnight'),
                 ),
               ),
             ],

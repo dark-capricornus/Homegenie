@@ -10,7 +10,7 @@ ContextStore.
 from __future__ import annotations
 
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from sqlmodel import SQLModel, Field, select
@@ -89,7 +89,7 @@ async def upsert_device_state(
     async with async_session() as sess:
         res = await sess.execute(select(Device).where(Device.device_id == device_id))
         dev = res.scalar_one_or_none()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if not dev:
             dev = Device(
                 device_id=device_id, 
@@ -124,7 +124,7 @@ async def get_device_by_device_id(device_id: str):
         _, async_session = _ensure_db()
     except RuntimeError:
         # No DB configured; return a synthetic job id so callers can continue
-        return int(datetime.utcnow().timestamp() * 1000)
+        return int(datetime.now(timezone.utc).timestamp() * 1000)
     async with async_session() as sess:
         res = await sess.execute(select(Device).where(Device.device_id == device_id))
         return res.scalar_one_or_none()
@@ -173,9 +173,9 @@ async def save_context_snapshot(context_store) -> Optional[int]:
         await init_db()
     except Exception:
         # No DB configured; return a synthetic timestamp id
-        return int(datetime.utcnow().timestamp() * 1000)
+        return int(datetime.now(timezone.utc).timestamp() * 1000)
     # For now, we don't persist a full snapshot. Return a lightweight id.
-    return int(datetime.utcnow().timestamp() * 1000)
+    return int(datetime.now(timezone.utc).timestamp() * 1000)
 
 
 async def upsert_device_metadata(device_id: str, metadata: Dict[str, Any]) -> Optional[int]:
@@ -188,7 +188,7 @@ async def upsert_device_metadata(device_id: str, metadata: Dict[str, Any]) -> Op
         _, async_session = _ensure_db()
     except RuntimeError:
         # No DB configured; return synthetic id
-        return int(datetime.utcnow().timestamp() * 1000)
+        return int(datetime.now(timezone.utc).timestamp() * 1000)
     async with async_session() as sess:
         res = await sess.execute(select(Device).where(Device.device_id == device_id))
         dev = res.scalar_one_or_none()
@@ -205,7 +205,7 @@ async def upsert_device_metadata(device_id: str, metadata: Dict[str, Any]) -> Op
             await sess.refresh(dev)
         except Exception:
             pass
-    return int(getattr(dev, 'id', int(datetime.utcnow().timestamp() * 1000)))
+    return int(getattr(dev, 'id', int(datetime.now(timezone.utc).timestamp() * 1000)))
 
 
 async def save_memory_entry(entry: Dict[str, Any]) -> Optional[int]:
@@ -216,7 +216,7 @@ async def save_memory_entry(entry: Dict[str, Any]) -> Optional[int]:
         # No DB configured; return synthetic id
         return int(datetime.utcnow().timestamp() * 1000)
     async with async_session() as sess:
-        me = MemoryEntry(key=entry.get("key"), value=entry.get("value"), ts=entry.get("ts") or datetime.utcnow())
+        me = MemoryEntry(key=entry.get("key"), value=entry.get("value"), ts=entry.get("ts") or datetime.now(timezone.utc))
         sess.add(me)
         await sess.commit()
         try:
@@ -246,10 +246,10 @@ async def save_schedule_job(job: Dict[str, Any]):
                 sj.enabled = job.get("enabled", sj.enabled)
                 sj.job_metadata = job.get("metadata", sj.job_metadata)
             else:
-                sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), job_metadata=job.get("metadata", {}), created_at=datetime.utcnow())
+                sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), job_metadata=job.get("metadata", {}), created_at=datetime.now(timezone.utc))
                 sess.add(sj)
         else:
-            sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), job_metadata=job.get("metadata", {}), created_at=datetime.utcnow())
+            sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), job_metadata=job.get("metadata", {}), created_at=datetime.now(timezone.utc))
             sess.add(sj)
         await sess.commit()
         try:

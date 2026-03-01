@@ -68,3 +68,5 @@ alembic/
 *.bat
 *.txt
 pgdata/
+n8n/
+# tests/

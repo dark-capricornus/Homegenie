@@ -46,6 +46,23 @@ from src.agents.enhanced_memory_agent import EnhancedMemoryAgent
 from src.agents.planner_agent import PlannerAgent
 from src.agents.scheduler_agent import SchedulerAgent
 
+from fastapi.security import APIKeyHeader
+from fastapi import Depends
+
+API_KEY_NAME = "X-HomeGenie-Token"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def verify_api_key(api_key: str = Depends(api_key_header)):
+    """Validates the incoming API key against the environment token."""
+    expected_key = os.getenv("HOMEGENIE_API_KEY", "homegenie_dev_token_123")
+    if not api_key or api_key != expected_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API Key"
+        )
+    return api_key
+
+
 from src.core.feature_flags import flags
 from dataclasses import asdict
 from src.core.settings_v2 import settings_v2
@@ -55,6 +72,14 @@ from src.core import db_async as db_v2
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# Global in-memory state store (Phase 1 V1 Control Loop)
+GLOBAL_STATE = {
+    "timestamp": None,
+    "states": {},       # user_id (str) → state object
+    "total_devices": 0
+}
 
 
 class UserPreferences:
@@ -620,41 +645,8 @@ class CommandRequest(BaseModel):
     params: Optional[Dict[str, Any]] = {}
 
 
+
 # API Endpoints
-
-@app.post("/devices/{device_id}/command")
-async def send_device_command(
-    device_id: str,
-    command: CommandRequest
-):
-    """
-    Send a command to a specific device.
-    
-    This endpoint validates the device exists (in config or as a fallback)
-    and dispatches the command via the appropriate protocol (MQTT/HTTP).
-    It returns immediately upon dispatch (fire-and-forget).
-    """
-    try:
-        task = {
-            "device": device_id,
-            "action": command.action,
-            "value": command.value
-        }
-        # Merge extra params if present
-        if command.params:
-            task.update(command.params)
-            
-        success = await executor_agent.execute(task)
-        
-        if success:
-             return {"status": "accepted", "device_id": device_id, "message": "Command dispatched"}
-        else:
-             raise HTTPException(status_code=500, detail="Failed to dispatch command")
-             
-    except Exception as e:
-        logger.error(f"Command execution error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.get("/")
 async def root():
@@ -667,6 +659,8 @@ async def root():
             "POST /prefs/{user_id}?key=<k>&value=<v>",
             "GET /prefs/{user_id}",
             "GET /state",
+            "GET /devices",
+            "POST /devices/control",
             "GET /history/{user_id}"
         ]
     }
@@ -675,97 +669,62 @@ async def root():
 @app.post("/goal/{user_id}", response_model=GoalResponse)
 async def process_goal(
     user_id: str,
-    background_tasks: BackgroundTasks,
     goal: str = Query(..., description="Natural language goal description")
 ):
     """
-    Process a user goal through Planner → Scheduler → Executor pipeline.
-    
-    Examples:
-    - "goodnight" → Turn off lights, lock doors, set sleep temperature
-    - "good morning" → Turn on lights, set comfortable temperature
-    - "movie time" → Dim lights for entertainment
+    Process a user goal using the Planner and update both GLOBAL_STATE and DB.
     """
+    if not goal:
+        raise HTTPException(status_code=400, detail="Goal cannot be empty")
+
     start_time = datetime.now()
-    
+    now = start_time.isoformat()
+
+    # 1. Update in-memory GLOBAL_STATE (for fast n8n poll)
+    GLOBAL_STATE["states"][str(user_id)] = {
+        "goal": goal,
+        "last_updated": now
+    }
+    GLOBAL_STATE["timestamp"] = now
+    GLOBAL_STATE["total_devices"] = len(GLOBAL_STATE["states"])
+
+    # 2. Plan and execute tasks
+    tasks_planned = 0
+    tasks_executed = 0
     try:
-        # Sanitize input: trim whitespace and newlines
-        goal = goal.strip()
-        
-        if not goal:
-            raise HTTPException(status_code=400, detail="Goal cannot be empty")
-        
-        logger.info(f"Processing goal for user {user_id}: {goal}")
-        
-        # Log the goal request
-        await memory_agent.add_entry(user_id, "goal_request", {
-            "goal": goal,
-            "timestamp": start_time.isoformat()
-        })
-        
-        # Step 1: Plan the goal
+        # Plan tasks based on goal
         planned_tasks = await planner_agent.plan(goal, user_id)
+        tasks_planned = len(planned_tasks)
         
-        # Step 2: Schedule the tasks
-        scheduled_tasks = await scheduler.schedule_tasks(planned_tasks)
-        
-        # Step 3: Execute the tasks
-        executed_count = 0
-        execution_results = []
-        
-        for task in scheduled_tasks:
-            try:
+        if planned_tasks:
+            # Execute tasks via executor_agent
+            for task in planned_tasks:
                 success = await executor_agent.execute(task)
                 if success:
-                    executed_count += 1
-                execution_results.append({
-                    "task": task,
-                    "success": success
-                })
-            except Exception as e:
-                logger.error(f"Task execution failed: {e}")
-                execution_results.append({
-                    "task": task,
-                    "success": False,
-                    "error": str(e)
-                })
+                    tasks_executed += 1
         
-        execution_time = (datetime.now() - start_time).total_seconds()
-        
-        # Log the execution results
-        await memory_agent.add_entry(user_id, "goal_execution", {
-            "goal": goal,
-            "tasks_planned": len(planned_tasks),
-            "tasks_scheduled": len(scheduled_tasks),
-            "tasks_executed": executed_count,
-            "execution_time": execution_time,
-            "results": execution_results
-        })
-        
-        logger.info(f"Goal processed: {executed_count}/{len(scheduled_tasks)} tasks executed in {execution_time:.2f}s")
-        
-        return GoalResponse(
-            message=f"Goal '{goal}' processed successfully",
-            tasks_planned=len(planned_tasks),
-            tasks_scheduled=len(scheduled_tasks),
-            tasks_executed=executed_count,
-            execution_time=execution_time
-        )
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions (like 400 for empty goal)
-        raise
-    except Exception as e:
-        logger.error(f"Goal processing failed: {e}", exc_info=True)
+        # 3. Persist to DB if available
         try:
-            await memory_agent.add_entry(user_id, "goal_error", {
-                "goal": goal if 'goal' in locals() else "unknown",
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            })
-        except Exception:
-            pass  # Don't fail if logging fails
-        raise HTTPException(status_code=500, detail=f"Goal processing failed: {str(e)}")
+            from src.core import db_async as db_v2
+            # Store intent in a generic device or a dedicated user intent table
+            # For now, we update the user's goals in memory_agent which persists to DB
+            await memory_agent.add_entry(user_id, "goal_request", {"goal": goal, "tasks": tasks_planned})
+        except Exception as db_err:
+            logger.warning(f"Failed to persist goal to DB: {db_err}")
+
+    except Exception as e:
+        logger.error(f"Error processing goal: {e}")
+        # We still return what we have
+
+    execution_time = (datetime.now() - start_time).total_seconds()
+
+    return GoalResponse(
+        message=f"Goal '{goal}' processed successfully",
+        tasks_planned=tasks_planned,
+        tasks_scheduled=tasks_planned,
+        tasks_executed=tasks_executed,
+        execution_time=execution_time
+    )
 
 
 @app.post("/prefs/{user_id}", response_model=PreferenceResponse)
@@ -832,22 +791,93 @@ async def get_preferences(user_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to get preferences: {e}")
 
 
-@app.get("/state", response_model=StateResponse)
+@app.get("/state")
 async def get_system_state():
-    """Get current system state from ContextStore."""
+    """Get current system state from GLOBAL_STATE."""
+    return GLOBAL_STATE
+
+import urllib.request
+@app.post("/chat/n8n")
+async def proxy_to_n8n(request: Request, api_key: str = Depends(verify_api_key)):
+    """Proxy frontend chat requests directly to n8n local webhook to bypass all browser CORS issues."""
     try:
-        state_dump = await context_store.async_dump()
-        logger.info(f"🔍 /state called. StoreID={id(context_store)} Items={len(state_dump.get('states', {}))}")
-        
-        return StateResponse(
-            timestamp=datetime.now().isoformat(),
-            states=state_dump.get("states", {}),
-            total_devices=state_dump.get("total_topics", 0)
+        body = await request.json()
+        req = urllib.request.Request(
+            'http://n8n:5678/webhook/homegenie-chat', 
+            data=json.dumps(body).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
         )
+        with urllib.request.urlopen(req) as response:
+            result = response.read().decode('utf-8')
+            try:
+                return json.loads(result)
+            except:
+                return {"response": result}
+    except Exception as e:
+        logger.error(f"Failed to proxy to n8n: {e}")
+        return {"error": str(e)}
+
+from fastapi import UploadFile, File
+@app.post("/voice/transcribe")
+async def transcribe_voice(
+    file: UploadFile = File(...),
+    api_key: str = Depends(verify_api_key)
+):
+    """Transcribe audio via Groq Whisper and proxy the text to n8n."""
+    try:
+        import os
+        import httpx
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            return {"error": "GROQ_API_KEY missing from environment"}
+            
+        audio_content = await file.read()
+        filename = file.filename or "audio.webm"
+        
+        # Call Groq Whisper via HTTPX
+        files = {'file': (filename, audio_content, 'audio/webm')}
+        data = {'model': 'whisper-large-v3-turbo', 'response_format': 'json'}
+        headers = {'Authorization': f'Bearer {api_key}'}
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions", 
+                files=files, 
+                data=data, 
+                headers=headers
+            )
+            
+            if resp.status_code != 200:
+                logger.error(f"Groq API Error: {resp.text}")
+                return {"error": f"Groq Error: {resp.status_code}"}
+                
+            transcription = resp.json()
+        
+        transcript_text = transcription.get("text", "")
+        logger.info(f"🎤 Voice transcribed: {transcript_text}")
+        
+        if not transcript_text.strip():
+             return {"error": "Empty transcription"}
+             
+        # Proxy to n8n webhook
+        req = urllib.request.Request(
+            'http://n8n:5678/webhook/homegenie-chat', 
+            data=json.dumps({"message": transcript_text}).encode('utf-8'),
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+        with urllib.request.urlopen(req) as response:
+            result = response.read().decode('utf-8')
+            try:
+                n8n_response = json.loads(result)
+            except:
+                n8n_response = {"response": result}
+                
+        return {"status": "success", "transcript": transcript_text, "n8n_response": n8n_response}
         
     except Exception as e:
-        logger.error(f"Failed to get system state: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get system state: {e}")
+        logger.error(f"Voice pipeline error: {e}")
+        return {"error": str(e)}
 
 
 @app.get("/history/{user_id}", response_model=HistoryResponse)
@@ -1119,58 +1149,70 @@ class DeviceControlResponse(BaseModel):
     execution_time_ms: float
 
 
-@app.post("/devices/control", response_model=DeviceControlResponse)
-async def control_device(request: DeviceCommandRequest):
-    """Direct device control endpoint - bypasses goal planning."""
+@app.post("/devices/control")
+async def control_device(request_raw: Any):
+    """Standardized endpoint for device control, compatible with Pydantic and raw dict payloads."""
     start_time = datetime.now()
-    
     try:
-        logger.info(f"API /devices/control called: device={request.device_id} action={request.action} user={request.user_id}")
+        # Convert Pydantic model to dict if needed
+        if hasattr(request_raw, 'dict'):
+            payload = request_raw.dict()
+        elif hasattr(request_raw, 'model_dump'):
+            payload = request_raw.model_dump()
+        else:
+            payload = request_raw if isinstance(request_raw, dict) else {}
+
+        # Extract fields from payload
+        device_id = payload.get("device_id")
+        action = payload.get("action")
+        parameters = payload.get("parameters", {})
+        user_id = payload.get("user_id", "api_user")
+
+        if not device_id or not action:
+            raise HTTPException(status_code=400, detail="device_id and action are required")
+
+        logger.info(f"API /devices/control called: device={device_id} action={action} user={user_id}")
         # Ensure executor is connected
         if not executor_agent._connected:
             await executor_agent.connect()
         
         # Create device task
         device_task = {
-            "device": request.device_id,
-            "action": request.action
+            "device": device_id,
+            "action": action
         }
-        if request.parameters:
-            device_task.update(request.parameters)
+        if parameters:
+            # Handle standard n8n/planner 'value' parameter vs other dict keys
+            if isinstance(parameters, dict):
+                device_task.update(parameters)
+            else:
+                device_task["value"] = parameters
         
-        # Persist intended state to DB before publishing (executor will also persist)
-        try:
-            from src.core import db_async as db_v2
-            # derive device id
-            # (executor will also persist; we avoid double-calculation here)
-        except Exception:
-            pass
-
-        # Execute directly (ExecutorAgent will persist the intended state before publish)
+        # Execute directly
         result = await executor_agent.execute(device_task)
         
         # Log the interaction
         await memory_agent.add_entry(
-            request.user_id or "api_user",
+            user_id,
             "device_command",
             {
-                "device": request.device_id,
-                "action": request.action,
-                "parameters": request.parameters,
+                "device": device_id,
+                "action": action,
+                "parameters": parameters,
                 "source": "direct_api"
             }
         )
         
         execution_time = (datetime.now() - start_time).total_seconds() * 1000
         
-        return DeviceControlResponse(
-            success=result,
-            device_id=request.device_id,
-            action=request.action,
-            result={"executed": result, "task": device_task},
-            timestamp=start_time.isoformat(),
-            execution_time_ms=execution_time
-        )
+        return {
+            "success": result,
+            "device_id": device_id,
+            "action": action,
+            "result": {"executed": result, "task": device_task},
+            "timestamp": start_time.isoformat(),
+            "execution_time_ms": execution_time
+        }
         
     except Exception as e:
         logger.error(f"Error controlling device {request.device_id}: {e}")
