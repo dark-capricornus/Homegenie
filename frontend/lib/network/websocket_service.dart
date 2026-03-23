@@ -1,0 +1,103 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:logging/logging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:homegenie_app/network/api_locator.dart';
+
+final _log = Logger('WebSocketService');
+
+class WebSocketService {
+  WebSocketChannel? _channel;
+  final _controller = StreamController<Map<String, dynamic>>.broadcast();
+  bool _isConnected = false;
+  Timer? _reconnectTimer;
+
+  /// Key for persisted API token in SharedPreferences.
+  static const String _kTokenKey = 'homegenie_api_token';
+
+  Stream<Map<String, dynamic>> get stream => _controller.stream;
+  bool get isConnected => _isConnected;
+
+  /// Store the API token for authenticated WebSocket connections.
+  static Future<void> setToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kTokenKey, token);
+  }
+
+  /// Pre-resolved base URL to avoid re-running discovery on every connect.
+  String? _baseUrlOverride;
+
+  Future<void> connect({String? baseUrl}) async {
+    if (_isConnected) return;
+
+    // Use provided baseUrl, or the previously resolved one, or discover fresh.
+    final resolved = baseUrl ?? _baseUrlOverride ?? await ApiLocator.getBaseUrl();
+    if (resolved.isEmpty) {
+      _log.warning('Cannot connect to WebSocket: Base URL is empty');
+      _scheduleReconnect();
+      return;
+    }
+    _baseUrlOverride = resolved;
+    final String effectiveBaseUrl = resolved;
+
+    // Read token from SharedPreferences instead of hardcoding
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_kTokenKey) ?? '';
+    final queryParams = token.isNotEmpty ? '?token=$token' : '';
+    final wsUrl = '${effectiveBaseUrl.replaceFirst('http', 'ws')}/ws$queryParams';
+    
+    _log.info('Connecting to WebSocket: $wsUrl (ReleaseMode: $kReleaseMode)');
+
+    try {
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      _isConnected = true;
+
+      _channel!.stream.listen(
+        (message) {
+          try {
+            final data = json.decode(message) as Map<String, dynamic>;
+            _controller.add(data);
+          } catch (e) {
+            _log.warning('Error decoding WebSocket message from $wsUrl: $e');
+          }
+        },
+        onDone: () {
+          _log.info('WebSocket connection closed for $wsUrl');
+          _isConnected = false;
+          _scheduleReconnect();
+        },
+        onError: (error) {
+          _log.warning(
+              'WebSocket error for $wsUrl: $error. Ensure backend is running and CORS allows this IP.');
+          _isConnected = false;
+          _scheduleReconnect();
+        },
+      );
+    } catch (e) {
+      _log.warning('Failed to connect to WebSocket at $wsUrl: $e');
+      _isConnected = false;
+      _scheduleReconnect();
+    }
+  }
+
+  void _scheduleReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(const Duration(seconds: 5), () {
+      _log.info('Attempting to reconnect to WebSocket...');
+      connect();
+    });
+  }
+
+  void disconnect() {
+    _reconnectTimer?.cancel();
+    _channel?.sink.close();
+    _isConnected = false;
+  }
+
+  void dispose() {
+    disconnect();
+    _controller.close();
+  }
+}

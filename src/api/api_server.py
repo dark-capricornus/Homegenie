@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 
@@ -45,6 +45,13 @@ from src.agents.executor_agent import ExecutorAgent
 from src.agents.enhanced_memory_agent import EnhancedMemoryAgent
 from src.agents.planner_agent import PlannerAgent
 from src.agents.scheduler_agent import SchedulerAgent
+from src.agents.automation_agent import AutomationAgent
+from src.agents.tool_registry import build_default_registry
+from src.agents.tool_handlers import bind_handlers
+from src.agents.conversation import ConversationManager
+from src.agents.react_agent import ReActAgent
+
+from fastapi import WebSocket, WebSocketDisconnect
 
 from fastapi.security import APIKeyHeader
 from fastapi import Depends
@@ -54,7 +61,17 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 async def verify_api_key(api_key: str = Depends(api_key_header)):
     """Validates the incoming API key against the environment token."""
-    expected_key = os.getenv("HOMEGENIE_API_KEY", "homegenie_dev_token_123")
+    expected_key = os.getenv("HOMEGENIE_API_KEY")
+    if not expected_key:
+        _is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+        if _is_production:
+            raise HTTPException(
+                status_code=500,
+                detail="Server misconfiguration: HOMEGENIE_API_KEY not set"
+            )
+        # Allow a dev-only fallback outside production
+        expected_key = "homegenie_dev_token_123"
+        logger.warning("HOMEGENIE_API_KEY not set — using insecure dev default. Set it before deploying.")
     if not api_key or api_key != expected_key:
         raise HTTPException(
             status_code=401,
@@ -123,9 +140,22 @@ class MemoryAgent:
         
         self._history[user_id].append(entry)
         
-        # Keep history limited to last 100 entries per user
-        if len(self._history[user_id]) > 100:
-            self._history[user_id].pop(0)
+        # Keep history limited per user
+        _max_history = int(os.getenv("MEMORY_MAX_ENTRIES_PER_USER", "100"))
+        if len(self._history[user_id]) > _max_history:
+            self._history[user_id] = self._history[user_id][-_max_history:]
+
+        # Evict oldest inactive user if total tracked users exceed threshold
+        _max_users = int(os.getenv("MEMORY_MAX_USERS", "500"))
+        if len(self._history) > _max_users:
+            oldest_user = min(
+                (u for u in self._history if u != user_id),
+                key=lambda u: self._history[u][-1]["timestamp"] if self._history[u] else "",
+                default=None
+            )
+            if oldest_user:
+                del self._history[oldest_user]
+                logger.debug(f"Evicted inactive user history: {oldest_user}")
         
         logger.debug(f"Added {entry_type} entry for user {user_id}")
     
@@ -329,8 +359,257 @@ class Scheduler:
         return durations.get(device_type, 0.5)
 
 
-# Global instances
+class SimpleRateLimiter:
+    """Per-key in-memory rate limiter using token bucket pattern."""
+    def __init__(self, requests_per_minute: int = 20, max_keys: int = 1000):
+        self.rpm = requests_per_minute
+        self._buckets: Dict[str, List[datetime]] = {}
+        self._max_keys = max_keys
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, key: str = "__global__"):
+        async with self._lock:
+            now = datetime.now()
+            # Lazy init bucket
+            if key not in self._buckets:
+                self._buckets[key] = []
+            # Evict stale buckets if too many keys tracked
+            if len(self._buckets) > self._max_keys:
+                oldest_key = min(
+                    (k for k in self._buckets if k != key),
+                    key=lambda k: self._buckets[k][-1] if self._buckets[k] else datetime.min,
+                    default=None
+                )
+                if oldest_key:
+                    del self._buckets[oldest_key]
+            # Remove entries older than 60 seconds
+            self._buckets[key] = [t for t in self._buckets[key] if (now - t).total_seconds() < 60]
+            if len(self._buckets[key]) >= self.rpm:
+                wait_time = 60 - (now - self._buckets[key][0]).total_seconds()
+                if wait_time > 0:
+                    logger.warning(f"Rate limit reached for {key}. Waiting {wait_time:.1f}s...")
+                    await asyncio.sleep(wait_time)
+            self._buckets[key].append(datetime.now())
+
+_rpm = int(os.getenv("RATE_LIMIT_RPM", "30"))
+rate_limiter = SimpleRateLimiter(requests_per_minute=_rpm)
+
+async def gemini_llm_client(payload: Dict[str, Any]) -> str:
+    """Async client to call Google Gemini API via REST."""
+    import httpx
+    api_key = os.getenv("GOOGLE_API_KEY")
+    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    
+    if not api_key:
+        logger.error("❌ GOOGLE_API_KEY missing for Gemini reasoning")
+        return ""
+
+    await rate_limiter.acquire()
+    
+    messages = payload.get("messages", [])
+    # Convert 'messages' to Gemini format
+    contents = []
+    for msg in messages:
+        role = "user" if msg["role"] == "user" else "model"
+        # Planner system prompt comes in as user message sometimes, but usually it's role: system
+        if msg["role"] == "system":
+            # Gemini 1.5 doesn't have a direct 'system' role in the contents list for simple REST, 
+            # but we can prefix it to the first user message or use the system_instruction field.
+            # For simplicity, we'll try to use the system_instruction if supported or just prefix.
+            pass
+        else:
+            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+    
+    # Handle system message if present
+    system_msg = next((m["content"] for m in messages if m["role"] == "system"), None)
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    
+    payload_data: Dict[str, Any] = {"contents": contents}
+    if system_msg:
+        payload_data["system_instruction"] = {"parts": [{"text": system_msg}]}
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, json=payload_data)
+            
+            if resp.status_code != 200:
+                logger.error(f"❌ Gemini API Error ({resp.status_code}): {resp.text}")
+                return ""
+            
+            res_json = resp.json()
+            if "candidates" in res_json and res_json["candidates"]:
+                return res_json["candidates"][0]["content"]["parts"][0]["text"]
+            
+            return ""
+    except Exception as e:
+        logger.error(f"❌ Gemini Request Failed: {e}")
+        return ""
+
+async def groq_llm_client(payload: Dict[str, Any]) -> str:
+    """Async client to call Groq Chat Completions."""
+    import httpx
+    api_key = os.getenv("LLAMA_CLOUD_API_KEY")
+    model = os.getenv("LLAMA_CLOUD_MODEL", "llama-3.1-8b-instant")
+    
+    if not api_key:
+        logger.error("❌ Groq API Key missing for LLM Reasoning")
+        return ""
+
+    await rate_limiter.acquire()
+    
+    # Payload usually contains 'messages'
+    messages = payload.get("messages", [])
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.2
+                },
+                timeout=10.0
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+            else:
+                logger.error(f"❌ Groq API Error ({resp.status_code}): {resp.text}")
+                return ""
+        except Exception as e:
+            logger.error(f"❌ Groq Request Failed: {e}")
+            return ""
+
+
+# Singleton Ollama LLM client — avoids re-creating on every request
+_ollama_client: Optional[Any] = None
+
+def _get_ollama_client():
+    global _ollama_client
+    if _ollama_client is None or not _ollama_client.enabled:
+        from src.core.llm_client import LLMClient, LLMConfig
+        config = LLMConfig(
+            provider="ollama",
+            ollama_host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct"),
+            timeout=int(os.getenv("LLM_TIMEOUT", "30")),
+        )
+        _ollama_client = LLMClient(config)
+    return _ollama_client
+
+async def ollama_llm_client(payload: Dict[str, Any]) -> Any:
+    """Async adapter for local Ollama. Passes full message history for ReAct multi-turn."""
+    try:
+        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
+        timeout = int(os.getenv("LLM_TIMEOUT", "30"))
+
+        messages = payload.get("messages", [])
+        if not messages:
+            return ""
+
+        # Map roles: Ollama accepts "system", "user", "assistant"
+        # ReAct loop uses "tool_call"/"tool_result" — remap to user/assistant
+        chat_messages = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if role in ("system", "user", "assistant"):
+                chat_messages.append({"role": role, "content": content})
+            elif role == "tool_call":
+                chat_messages.append({"role": "assistant", "content": content})
+            elif role == "tool_result":
+                chat_messages.append({"role": "user", "content": content})
+            else:
+                chat_messages.append({"role": "user", "content": content})
+
+        api_payload = {
+            "model": ollama_model,
+            "messages": chat_messages,
+            "stream": False,
+            "format": "json",
+            "options": {
+                "num_predict": 512,
+                "temperature": payload.get("temperature", 0.1),
+            },
+            "keep_alive": "10m",
+        }
+
+        import httpx
+        # Ollama can take 30-60s for large prompts (29 devices + tool schemas)
+        read_timeout = max(float(timeout), 60.0)
+        timeouts = httpx.Timeout(connect=10.0, read=read_timeout, write=10.0, pool=10.0)
+        async with httpx.AsyncClient(timeout=timeouts) as client:
+            resp = await client.post(f"{ollama_host}/api/chat", json=api_payload)
+
+        if resp.status_code != 200:
+            logger.error(f"[OLLAMA] HTTP {resp.status_code}: {resp.text[:200]}")
+            return ""
+
+        data = resp.json()
+        text = data.get("message", {}).get("content", "").strip()
+
+        if not text:
+            logger.warning("⚠️ Ollama returned empty response")
+            return ""
+
+        dur = data.get("total_duration", 0) / 1e9
+        logger.info(f"[OLLAMA] ReAct response: {len(text)} chars in {dur:.1f}s")
+
+        # Try to parse as JSON for ReAct agent
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            return text
+
+    except Exception as e:
+        logger.error(f"❌ Ollama LLM adapter error ({type(e).__name__}): {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        return ""
+
+
+# Shared state
 context_store = ContextStore()
+active_connections: List[WebSocket] = []
+
+async def broadcast_state_change(topic: str, payload: Any):
+    """Broadcast a state change to all connected WebSocket clients."""
+    if not active_connections:
+        return
+    
+    message = {
+        "type": "state_update",
+        "topic": topic,
+        "payload": payload,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    
+    disconnected = []
+    for connection in active_connections:
+        try:
+            await connection.send_json(message)
+        except Exception:
+            disconnected.append(connection)
+            
+    for conn in disconnected:
+        if conn in active_connections:
+            active_connections.remove(conn)
+
+def context_subscriber_bridge(topic: str, payload: Any):
+    """Bridge for ContextStore updates to trigger broadcast."""
+    try:
+        loop = asyncio.get_running_loop()
+        asyncio.run_coroutine_threadsafe(broadcast_state_change(topic, payload), loop)
+    except RuntimeError:
+        # No running loop — skip broadcast (startup/shutdown edge case)
+        pass
+
+# Subscribe to context store
+context_store.subscribe(context_subscriber_bridge)
 logger.info(f"🏗️ Created global context store with ID: {id(context_store)}")
 
 # Use localhost for MQTT broker when running outside Docker
@@ -340,11 +619,44 @@ logger.info(f"🔧 Created executor agent with MQTT broker: {mqtt_broker_host} a
 
 user_prefs = UserPreferences()
 memory_agent = EnhancedMemoryAgent(context_store=context_store)
-planner_agent = PlannerAgent(context_store=context_store, memory_fetcher=memory_agent.get_history)
+
+# Determine LLM Client based on provider
+# Determine LLM Client based on provider (default: ollama with qwen2.5:7b-instruct)
+llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+if llm_provider == "google":
+    selected_llm_client = gemini_llm_client
+    logger.info(f"🧠 LLM Provider: Google Gemini | model: {os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')}")
+elif llm_provider == "groq":
+    selected_llm_client = groq_llm_client
+    logger.info(f"🧠 LLM Provider: Groq | model: {os.getenv('LLAMA_CLOUD_MODEL', 'llama-3.1-8b-instant')}")
+else:
+    # Default: Ollama local inference
+    selected_llm_client = ollama_llm_client
+    logger.info(f"🧠 LLM Provider: Ollama (local) | host: {os.getenv('OLLAMA_HOST', 'http://localhost:11434')} | model: {os.getenv('OLLAMA_MODEL', 'qwen2.5:7b-instruct')}")
+
+planner_agent = PlannerAgent(context_store=context_store, memory_fetcher=memory_agent.get_history, llm_client=selected_llm_client)
 scheduler = Scheduler(context_store)
 scheduler_agent = SchedulerAgent(loop=asyncio.get_event_loop(), executor=None)
+automation_agent = AutomationAgent(context_store=context_store, executor_agent=executor_agent)
 sensor_agent = None  # Will be initialized in lifespan
 voice_agent = None  # Will be initialized in lifespan
+
+# ── ReAct Agent (Phase 1-3: NLU + Agent Loop + Conversation Context) ──────
+tool_registry = build_default_registry()
+bind_handlers(
+    registry=tool_registry,
+    executor_agent=executor_agent,
+    context_store=context_store,
+    scheduler=scheduler,
+)
+conversation_manager = ConversationManager()
+react_agent = ReActAgent(
+    tool_registry=tool_registry,
+    conversation=conversation_manager,
+    llm_caller=selected_llm_client,
+    context_store=context_store,
+)
+logger.info("🤖 ReAct agent initialized with tool registry and conversation manager")
 
 
 
@@ -450,11 +762,29 @@ async def lifespan(app: FastAPI):
         context_store=context_store
     )
     
+    # Initialize voice agent with Vosk for offline STT
+    try:
+        from src.agents.voice_agent import VoiceAgent
+        voice_agent = VoiceAgent(
+            goal_processor=None,
+            enable_tts=False,
+            enable_wake_word=False,
+            recognition_method="vosk",
+            language="en-US"
+        )
+        logger.info("Voice agent initialized with Vosk STT")
+    except Exception as _ve:
+        logger.warning(f"Voice agent initialization failed (Vosk may not be installed): {_ve}")
+        voice_agent = None
+
     # Start sensor monitoring in background task
     sensor_task = asyncio.create_task(start_sensor_monitoring())
     
     # Start proactivity loop
     proactivity_task = asyncio.create_task(start_proactivity_loop())
+
+    # Start automation agent
+    await automation_agent.start()
 
     # Start scheduler agent and wire executor
     try:
@@ -485,7 +815,6 @@ async def lifespan(app: FastAPI):
     snapshot_task = None
     timeout_checker_task = None
     try:
-        from src.core import db_async as db_v2
         interval = int(getattr(settings_v2, 'CONTEXT_SNAPSHOT_INTERVAL_SECONDS', os.getenv('CONTEXT_SNAPSHOT_INTERVAL_SECONDS', '0')) or 0)
         if settings_v2.ENABLE_POSTGRES_MIGRATION and settings_v2.POSTGRES_URL and interval > 0:
             async def _snapshot_loop():
@@ -517,11 +846,26 @@ async def lifespan(app: FastAPI):
     logger.info("✅ Two-phase state timeout checker started")
     
     logger.info("✅ Home Automation API Server started")
-    
+
+    # Pre-warm the Ollama model so first user request doesn't pay cold-start
+    async def _warmup_ollama():
+        try:
+            client = _get_ollama_client()
+            if client and client.enabled:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, lambda: client.query("hi", json_mode=False))
+                logger.info("✅ Ollama model pre-warmed")
+        except Exception as e:
+            logger.warning(f"⚠️ Ollama warmup failed (non-fatal): {e}")
+
+    asyncio.create_task(_warmup_ollama())
+
     yield
     
     # Shutdown
     logger.info("🛑 Shutting down Home Automation API Server...")
+    if automation_agent:
+        automation_agent.stop()
     if sensor_agent:
         sensor_agent.stop()
     
@@ -585,19 +929,38 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware to allow browser requests from any origin
+# Add CORS middleware to allow browser requests from authorized origins
+_env_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
+_explicit_origins = [o.strip() for o in _env_origins if o.strip()]
+
+# Add standard development origins if not in production
+if os.getenv("ENVIRONMENT", "development").lower() != "production":
+    _dev_origins = [
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "http://localhost:8081",
+        "http://localhost:49792",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8080",
+    ]
+    for origin in _dev_origins:
+        if origin not in _explicit_origins:
+            _explicit_origins.append(origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=False,  # Must be False when allow_origins=["*"]
+    allow_origins=["*"] if os.getenv("ENVIRONMENT", "development").lower() != "production" else (_explicit_origins if _explicit_origins else ["*"]),
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
 )
 
 
 # Pydantic models for request/response
 class GoalResponse(BaseModel):
     message: str
+    response: Optional[str] = None  # Agent's conversational reply (for chat UI)
     tasks_planned: int
     tasks_scheduled: int
     tasks_executed: int
@@ -672,7 +1035,16 @@ async def process_goal(
     goal: str = Query(..., description="Natural language goal description")
 ):
     """
-    Process a user goal using the Planner and update both GLOBAL_STATE and DB.
+    Process a user goal using the ReAct agent (multi-step reasoning loop).
+
+    The agent:
+      1. Classifies intent and extracts entities
+      2. Picks tools (control_device, query_device, etc.) with structured params
+      3. Executes tools and observes results
+      4. Loops until done or asks for clarification
+      5. Maintains conversation context for follow-up messages
+
+    Falls back to the legacy one-shot planner if the ReAct agent fails.
     """
     if not goal:
         raise HTTPException(status_code=400, detail="Goal cannot be empty")
@@ -680,7 +1052,7 @@ async def process_goal(
     start_time = datetime.now()
     now = start_time.isoformat()
 
-    # 1. Update in-memory GLOBAL_STATE (for fast n8n poll)
+    # Update in-memory GLOBAL_STATE (for fast n8n poll)
     GLOBAL_STATE["states"][str(user_id)] = {
         "goal": goal,
         "last_updated": now
@@ -688,38 +1060,57 @@ async def process_goal(
     GLOBAL_STATE["timestamp"] = now
     GLOBAL_STATE["total_devices"] = len(GLOBAL_STATE["states"])
 
-    # 2. Plan and execute tasks
     tasks_planned = 0
     tasks_executed = 0
+    response_text = ""
+
     try:
-        # Plan tasks based on goal
-        planned_tasks = await planner_agent.plan(goal, user_id)
-        tasks_planned = len(planned_tasks)
-        
-        if planned_tasks:
-            # Execute tasks via executor_agent
-            for task in planned_tasks:
-                success = await executor_agent.execute(task)
-                if success:
-                    tasks_executed += 1
-        
-        # 3. Persist to DB if available
-        try:
-            from src.core import db_async as db_v2
-            # Store intent in a generic device or a dedicated user intent table
-            # For now, we update the user's goals in memory_agent which persists to DB
-            await memory_agent.add_entry(user_id, "goal_request", {"goal": goal, "tasks": tasks_planned})
-        except Exception as db_err:
-            logger.warning(f"Failed to persist goal to DB: {db_err}")
+        # ── Primary: ReAct agent with tool calling ────────────────────
+        llm_enabled = os.getenv("LLM_ENABLED", "false").lower() in ("1", "true", "yes")
+        if llm_enabled and react_agent:
+            result = await react_agent.process(goal, user_id)
+            response_text = result.get("response", "")
+            actions = result.get("actions_taken", [])
+            tasks_planned = len(actions)
+            tasks_executed = sum(
+                1 for a in actions if a.get("result", {}).get("success", False)
+            )
+            logger.info(
+                f"ReAct agent: {result.get('iterations', 0)} iterations, "
+                f"{tasks_planned} actions, {tasks_executed} succeeded"
+            )
+        else:
+            # ── Fallback: legacy one-shot planner ─────────────────────
+            planned_tasks = await planner_agent.plan(goal, user_id)
+            tasks_planned = len(planned_tasks)
+            if planned_tasks:
+                results = await asyncio.gather(
+                    *(executor_agent.execute(task) for task in planned_tasks),
+                    return_exceptions=True
+                )
+                tasks_executed = sum(1 for r in results if r is True)
+            response_text = f"Executed {tasks_executed} of {tasks_planned} actions."
+
+        # Persist to DB in background
+        async def _persist():
+            try:
+                await memory_agent.add_entry(
+                    user_id, "goal_request",
+                    {"goal": goal, "tasks": tasks_planned, "response": response_text[:500]}
+                )
+            except Exception as db_err:
+                logger.warning(f"Failed to persist goal to DB: {db_err}")
+        asyncio.create_task(_persist())
 
     except Exception as e:
-        logger.error(f"Error processing goal: {e}")
-        # We still return what we have
+        logger.error(f"Error processing goal: {e}", exc_info=True)
+        response_text = f"Error: {str(e)[:200]}"
 
     execution_time = (datetime.now() - start_time).total_seconds()
 
     return GoalResponse(
-        message=f"Goal '{goal}' processed successfully",
+        message=response_text or f"Goal '{goal}' processed successfully",
+        response=response_text or None,
         tasks_planned=tasks_planned,
         tasks_scheduled=tasks_planned,
         tasks_executed=tasks_executed,
@@ -791,10 +1182,28 @@ async def get_preferences(user_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to get preferences: {e}")
 
 
+@app.get("/health")
+async def health_check():
+    """Lightweight health check for discovery."""
+    logger.info("GET /health")
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/devices")
 @app.get("/state")
 async def get_system_state():
-    """Get current system state from GLOBAL_STATE."""
-    return GLOBAL_STATE
+    """Get current system state from ContextStore normalized for DashboardController."""
+    start_time = datetime.now()
+    raw_data = context_store.dump()
+    states = {}
+    for topic, payload in raw_data.get('states', {}).items():
+        if topic.startswith("devices/") and topic.endswith("/observed"):
+            device_id = topic.split("/")[1]
+            states[device_id] = payload
+    
+    duration = (datetime.now() - start_time).total_seconds()
+    logger.info(f"GET /state - {len(states)} devices - {duration:.3f}s")
+    return {"states": states, "total_devices": len(states)}
 
 import urllib.request
 @app.post("/chat/n8n")
@@ -823,60 +1232,74 @@ async def transcribe_voice(
     file: UploadFile = File(...),
     api_key: str = Depends(verify_api_key)
 ):
-    """Transcribe audio via Groq Whisper and proxy the text to n8n."""
+    """Transcribe audio using Vosk offline STT, optionally proxy result to n8n."""
     try:
-        import os
-        import httpx
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            return {"error": "GROQ_API_KEY missing from environment"}
-            
+        import io as _io
+
+        if voice_agent is None:
+            return {"error": "Voice agent not initialized. Check Vosk model at models/vosk/"}
+
         audio_content = await file.read()
-        filename = file.filename or "audio.webm"
-        
-        # Call Groq Whisper via HTTPX
-        files = {'file': (filename, audio_content, 'audio/webm')}
-        data = {'model': 'whisper-large-v3-turbo', 'response_format': 'json'}
-        headers = {'Authorization': f'Bearer {api_key}'}
-        
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/audio/transcriptions", 
-                files=files, 
-                data=data, 
-                headers=headers
-            )
-            
-            if resp.status_code != 200:
-                logger.error(f"Groq API Error: {resp.text}")
-                return {"error": f"Groq Error: {resp.status_code}"}
-                
-            transcription = resp.json()
-        
-        transcript_text = transcription.get("text", "")
-        logger.info(f"🎤 Voice transcribed: {transcript_text}")
-        
-        if not transcript_text.strip():
-             return {"error": "Empty transcription"}
-             
-        # Proxy to n8n webhook
-        req = urllib.request.Request(
-            'http://n8n:5678/webhook/homegenie-chat', 
-            data=json.dumps({"message": transcript_text}).encode('utf-8'),
-            headers={'Content-Type': 'application/json'},
-            method='POST'
+        filename = file.filename or "audio.opus"
+        mime_type = file.content_type or "audio/ogg"
+
+        # Convert uploaded audio (opus/webm/wav) to PCM 16kHz 16-bit mono for Vosk
+        try:
+            from pydub import AudioSegment
+
+            if "opus" in filename.lower() or "opus" in mime_type:
+                fmt = "ogg"  # opus is carried in ogg container
+            elif "webm" in filename.lower() or "webm" in mime_type:
+                fmt = "webm"
+            elif "wav" in filename.lower():
+                fmt = "wav"
+            else:
+                fmt = "ogg"
+
+            audio_seg = AudioSegment.from_file(_io.BytesIO(audio_content), format=fmt)
+            audio_seg = audio_seg.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+            pcm_data = audio_seg.raw_data
+
+        except Exception as conv_err:
+            logger.error(f"Audio conversion failed: {conv_err}")
+            return {"error": f"Audio format conversion failed: {conv_err}"}
+
+        # Transcribe with Vosk (runs in thread pool to avoid blocking event loop)
+        transcript_text = await asyncio.get_event_loop().run_in_executor(
+            None, voice_agent.transcribe_pcm_bytes, pcm_data
         )
-        with urllib.request.urlopen(req) as response:
-            result = response.read().decode('utf-8')
-            try:
-                n8n_response = json.loads(result)
-            except:
-                n8n_response = {"response": result}
-                
-        return {"status": "success", "transcript": transcript_text, "n8n_response": n8n_response}
-        
+
+        logger.info(f"Voice transcribed (Vosk): '{transcript_text}'")
+
+        if not transcript_text.strip():
+            return {"status": "empty", "transcript": ""}
+
+        # Optionally proxy to n8n (non-blocking, best-effort)
+        n8n_response = None
+        try:
+            import urllib.request as _urlreq
+            req = _urlreq.Request(
+                "http://n8n:5678/webhook/homegenie-chat",
+                data=json.dumps({"message": transcript_text}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with _urlreq.urlopen(req, timeout=5) as resp:
+                raw = resp.read().decode("utf-8")
+                try:
+                    n8n_response = json.loads(raw)
+                except Exception:
+                    n8n_response = {"response": raw}
+        except Exception as n8n_err:
+            logger.warning(f"n8n proxy failed (non-fatal): {n8n_err}")
+
+        response_data: dict = {"status": "success", "transcript": transcript_text}
+        if n8n_response:
+            response_data["n8n_response"] = n8n_response
+        return response_data
+
     except Exception as e:
-        logger.error(f"Voice pipeline error: {e}")
+        logger.error(f"Voice pipeline error (Vosk): {e}")
         return {"error": str(e)}
 
 
@@ -901,18 +1324,6 @@ async def get_user_history(
 
 
 # Additional utility endpoints
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "components": {
-            "context_store": len(context_store) > 0,
-            "executor_agent": True,
-            "sensor_agent": sensor_agent.is_running() if sensor_agent else False
-        }
-    }
 
 
 @app.delete("/history/{user_id}")
@@ -1150,23 +1561,14 @@ class DeviceControlResponse(BaseModel):
 
 
 @app.post("/devices/control")
-async def control_device(request_raw: Any):
-    """Standardized endpoint for device control, compatible with Pydantic and raw dict payloads."""
+async def control_device(request: DeviceCommandRequest):
+    """Standardized endpoint for device control with strict Pydantic validation."""
     start_time = datetime.now()
     try:
-        # Convert Pydantic model to dict if needed
-        if hasattr(request_raw, 'dict'):
-            payload = request_raw.dict()
-        elif hasattr(request_raw, 'model_dump'):
-            payload = request_raw.model_dump()
-        else:
-            payload = request_raw if isinstance(request_raw, dict) else {}
-
-        # Extract fields from payload
-        device_id = payload.get("device_id")
-        action = payload.get("action")
-        parameters = payload.get("parameters", {})
-        user_id = payload.get("user_id", "api_user")
+        device_id = request.device_id
+        action = request.action
+        parameters = request.parameters
+        user_id = request.user_id
 
         if not device_id or not action:
             raise HTTPException(status_code=400, detail="device_id and action are required")
@@ -1193,7 +1595,7 @@ async def control_device(request_raw: Any):
         
         # Log the interaction
         await memory_agent.add_entry(
-            user_id,
+            user_id or "api_user",
             "device_command",
             {
                 "device": device_id,
@@ -1215,13 +1617,13 @@ async def control_device(request_raw: Any):
         }
         
     except Exception as e:
-        logger.error(f"Error controlling device {request.device_id}: {e}")
+        logger.error(f"Error controlling device {device_id}: {e}")
         execution_time = (datetime.now() - start_time).total_seconds() * 1000
         
         return DeviceControlResponse(
             success=False,
-            device_id=request.device_id,
-            action=request.action,
+            device_id=device_id or "unknown",
+            action=action or "unknown",
             result={"error": str(e)},
             timestamp=start_time.isoformat(),
             execution_time_ms=execution_time
@@ -1647,18 +2049,82 @@ async def delete_schedule(job_id: int):
         raise HTTPException(status_code=500, detail=f"Error deleting schedule: {e}")
 
 
+@app.get("/rules")
+async def list_rules():
+    """List all persistent automation rules."""
+    try:
+        rules = await db_v2.get_rules()
+        return {"rules": rules}
+    except Exception as e:
+        logger.error(f"Error listing rules: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing rules: {e}")
+
+
+@app.post("/rules")
+async def create_rule(request: Request):
+    """Create or update a persistent automation rule."""
+    try:
+        rule_data = await request.json()
+        rule_id = await db_v2.save_rule(rule_data)
+        await automation_agent.reload_rules()
+        return {"id": rule_id, "status": "saved"}
+    except Exception as e:
+        logger.error(f"Error saving rule: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving rule: {e}")
+
+
+@app.post("/devices/add")
+async def add_device(request: Request):
+    """Add a new device (mock implementation)."""
+    try:
+        device_data = await request.json()
+        logger.info(f"Adding new device: {device_data}")
+        # In a real app, you'd save to devices.json or DB
+        return {"status": "success", "message": "Device added successfully (simulated)"}
+    except Exception as e:
+        logger.error(f"Error adding device: {e}")
+        raise HTTPException(status_code=500, detail=f"Error adding device: {e}")
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    active_connections.append(websocket)
+    try:
+        # Send initial state dump
+        dump = context_store.dump()
+        await websocket.send_json({
+            "type": "initial_state",
+            "data": dump,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        
+        while True:
+            # Keep connection alive and handle incoming messages if needed
+            data = await websocket.receive_text()
+            # Handle incoming WS commands if necessary in future
+    except WebSocketDisconnect:
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+
+
 if __name__ == "__main__":
+    _port = int(os.getenv("API_PORT", 8081))
     print("🏠 HOME AUTOMATION API SERVER")
     print("="*40)
     print("Starting FastAPI server...")
-    print("API Documentation: http://localhost:8000/docs")
-    print("Alternative docs: http://localhost:8000/redoc")
+    print(f"API Documentation: http://localhost:{_port}/docs")
+    print(f"Health check:      http://localhost:{_port}/health")
     print()
-    
+
     uvicorn.run(
-        "api_server:app",
+        "src.api.api_server:app",
         host="0.0.0.0",
-        port=8000,
+        port=_port,
         reload=True,
         log_level="info"
     )

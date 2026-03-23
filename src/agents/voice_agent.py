@@ -202,10 +202,17 @@ class VoiceAgent:
         """Initialize Vosk offline speech recognition"""
         try:
             import vosk
-            # You would need to download a Vosk model
-            # model_path = "path/to/vosk-model"
-            # self.vosk_model = vosk.Model(model_path)
-            logging.info("Vosk offline recognition initialized")
+            import os
+            # Get model path from env or use default
+            model_path = os.getenv("VOSK_MODEL_PATH", "models/vosk")
+            
+            if not os.path.exists(model_path):
+                logging.error(f"Vosk model not found at {model_path}")
+                self.recognition_method = "google"
+                return
+
+            self.vosk_model = vosk.Model(model_path)
+            logging.info(f"Vosk offline recognition initialized with model at {model_path}")
         except Exception as e:
             logging.error(f"Error initializing Vosk: {e}")
             self.recognition_method = "google"  # Fallback
@@ -323,10 +330,54 @@ class VoiceAgent:
     
     def _recognize_with_vosk(self, audio) -> str:
         """Use Vosk for offline speech recognition"""
-        # Placeholder for Vosk implementation
-        # This would require proper Vosk model setup
-        return ""
+        try:
+            import vosk
+            import json
+            
+            if not self.vosk_model:
+                return ""
+            
+            # Get raw audio data (PCM 16-bit 16kHz mono is standard for Vosk)
+            # AudioData from SpeechRecognition needs to be converted
+            raw_data = audio.get_raw_data(convert_rate=16000, convert_width=2)
+            
+            rec = vosk.KaldiRecognizer(self.vosk_model, 16000)
+            if rec.AcceptWaveform(raw_data):
+                result = json.loads(rec.Result())
+                return result.get("text", "")
+            else:
+                result = json.loads(rec.FinalResult())
+                return result.get("text", "")
+                
+        except Exception as e:
+            logging.error(f"Vosk offline recognition failed: {e}")
+            return ""
     
+    def transcribe_pcm_bytes(self, pcm_data: bytes, sample_rate: int = 16000) -> str:
+        """
+        Transcribe raw PCM 16-bit mono audio bytes using Vosk.
+        Accepts raw PCM bytes (already converted to 16kHz, 16-bit, mono).
+        """
+        try:
+            import vosk
+            import json as _json
+
+            if not self.vosk_model:
+                logging.error("Vosk model not loaded")
+                return ""
+
+            rec = vosk.KaldiRecognizer(self.vosk_model, sample_rate)
+            chunk_size = 4000
+            for i in range(0, len(pcm_data), chunk_size):
+                rec.AcceptWaveform(pcm_data[i:i + chunk_size])
+
+            result = _json.loads(rec.FinalResult())
+            return result.get("text", "")
+
+        except Exception as e:
+            logging.error(f"Vosk transcription failed: {e}")
+            return ""
+
     def _process_commands(self):
         """Process voice commands from the queue"""
         while not self._stop_listening:

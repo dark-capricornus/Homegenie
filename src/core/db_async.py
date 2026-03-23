@@ -38,9 +38,20 @@ class ScheduleJob(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     cron: Optional[str] = None
+    next_run: Optional[datetime] = None
     enabled: bool = True
-    job_metadata: Optional[dict] = Field(sa_column=Column(SAJSON), default={})
+    data: Optional[dict] = Field(sa_column=Column(SAJSON), default={})
     created_at: Optional[datetime] = None
+
+
+class RuleTable(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    priority: int = 1
+    enabled: bool = True
+    content: dict = Field(sa_column=Column(SAJSON), default={})
+    created_at: Optional[datetime] = None
+    last_triggered: Optional[datetime] = None
 
 
 class MemoryEntry(SQLModel, table=True):
@@ -78,45 +89,50 @@ async def init_db(url: Optional[str] = None) -> None:
 
 
 async def upsert_device_state(
-    device_id: str, 
-    state: Optional[Dict[str, Any]] = None, 
+    device_id: str,
+    state: Optional[Dict[str, Any]] = None,
     intent: Optional[Dict[str, Any]] = None,
     status: Optional[str] = None,
-    name: Optional[str] = None, 
+    name: Optional[str] = None,
     device_type: Optional[str] = None
 ):
     _, async_session = _ensure_db()
     async with async_session() as sess:
-        res = await sess.execute(select(Device).where(Device.device_id == device_id))
-        dev = res.scalar_one_or_none()
-        now = datetime.now(timezone.utc)
-        if not dev:
-            dev = Device(
-                device_id=device_id, 
-                name=name or device_id, 
-                device_type=device_type, 
-                current_state=state or {},
-                intent=intent or {},
-                status=status or "unknown", 
-                last_updated=now
-            )
-            sess.add(dev)
-        else:
-            if state is not None:
-                dev.current_state = state
-            if intent is not None:
-                dev.intent = intent
-            if status is not None:
-                dev.status = status
-            
-            dev.last_updated = now
-            if name:
-                dev.name = name
-            if device_type:
-                dev.device_type = device_type
-        await sess.commit()
-        await sess.refresh(dev)
-        return dev
+        try:
+            res = await sess.execute(select(Device).where(Device.device_id == device_id))
+            dev = res.scalars().first()
+            now = datetime.now(timezone.utc)
+            if not dev:
+                dev = Device(
+                    device_id=device_id,
+                    name=name or device_id,
+                    device_type=device_type,
+                    current_state=state or {},
+                    intent=intent or {},
+                    status=status or "unknown",
+                    last_updated=now
+                )
+                sess.add(dev)
+            else:
+                if state is not None:
+                    dev.current_state = state
+                if intent is not None:
+                    dev.intent = intent
+                if status is not None:
+                    dev.status = status
+
+                dev.last_updated = now
+                if name:
+                    dev.name = name
+                if device_type:
+                    dev.device_type = device_type
+            await sess.commit()
+            await sess.refresh(dev)
+            return dev
+        except Exception as e:
+            await sess.rollback()
+            logger.error(f"Failed to upsert device {device_id}: {e}")
+            raise
 
 
 async def get_device_by_device_id(device_id: str):
@@ -127,7 +143,7 @@ async def get_device_by_device_id(device_id: str):
         return int(datetime.now(timezone.utc).timestamp() * 1000)
     async with async_session() as sess:
         res = await sess.execute(select(Device).where(Device.device_id == device_id))
-        return res.scalar_one_or_none()
+        return res.scalars().first()
 
 
 async def get_device_by_topic(topic: str):
@@ -191,7 +207,7 @@ async def upsert_device_metadata(device_id: str, metadata: Dict[str, Any]) -> Op
         return int(datetime.now(timezone.utc).timestamp() * 1000)
     async with async_session() as sess:
         res = await sess.execute(select(Device).where(Device.device_id == device_id))
-        dev = res.scalar_one_or_none()
+        dev = res.scalars().first()
         if not dev:
             dev = Device(device_id=device_id, name=metadata.get("name") or device_id, device_type=metadata.get("type"))
             sess.add(dev)
@@ -214,7 +230,7 @@ async def save_memory_entry(entry: Dict[str, Any]) -> Optional[int]:
         _, async_session = _ensure_db()
     except RuntimeError:
         # No DB configured; return synthetic id
-        return int(datetime.utcnow().timestamp() * 1000)
+        return int(datetime.now(timezone.utc).timestamp() * 1000)
     async with async_session() as sess:
         me = MemoryEntry(key=entry.get("key"), value=entry.get("value"), ts=entry.get("ts") or datetime.now(timezone.utc))
         sess.add(me)
@@ -223,7 +239,7 @@ async def save_memory_entry(entry: Dict[str, Any]) -> Optional[int]:
             await sess.refresh(me)
         except Exception:
             pass
-    return int(getattr(me, 'id', int(datetime.utcnow().timestamp() * 1000)))
+    return int(getattr(me, 'id', int(datetime.now(timezone.utc).timestamp() * 1000)))
 
 
 async def save_schedule_job(job: Dict[str, Any]):
@@ -236,27 +252,29 @@ async def save_schedule_job(job: Dict[str, Any]):
     except RuntimeError:
         return None
     async with async_session() as sess:
-        jid = job.get("id")
-        if jid:
-            res = await sess.execute(select(ScheduleJob).where(ScheduleJob.id == jid))
-            sj = res.scalar_one_or_none()
-            if sj:
-                sj.name = job.get("name", sj.name)
-                sj.cron = job.get("cron", sj.cron)
-                sj.enabled = job.get("enabled", sj.enabled)
-                sj.job_metadata = job.get("metadata", sj.job_metadata)
-            else:
-                sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), job_metadata=job.get("metadata", {}), created_at=datetime.now(timezone.utc))
-                sess.add(sj)
-        else:
-            sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), job_metadata=job.get("metadata", {}), created_at=datetime.now(timezone.utc))
-            sess.add(sj)
-        await sess.commit()
         try:
+            jid = job.get("id")
+            if jid:
+                res = await sess.execute(select(ScheduleJob).where(ScheduleJob.id == jid))
+                sj = res.scalar_one_or_none()
+                if sj:
+                    sj.name = job.get("name", sj.name)
+                    sj.cron = job.get("cron", sj.cron)
+                    sj.enabled = job.get("enabled", sj.enabled)
+                    sj.data = job.get("metadata", sj.data)
+                else:
+                    sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), data=job.get("metadata", {}), created_at=datetime.now(timezone.utc))
+                    sess.add(sj)
+            else:
+                sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), data=job.get("metadata", {}), created_at=datetime.now(timezone.utc))
+                sess.add(sj)
+            await sess.commit()
             await sess.refresh(sj)
-        except Exception:
-            pass
-    return getattr(sj, 'id', None)
+            return getattr(sj, 'id', None)
+        except Exception as e:
+            await sess.rollback()
+            logger.error(f"Failed to save schedule job: {e}")
+            return None
 
 
 async def get_schedule_jobs(job_id: Optional[int] = None, user_id: Optional[str] = None):
@@ -276,7 +294,7 @@ async def get_schedule_jobs(job_id: Optional[int] = None, user_id: Optional[str]
             filtered = []
             for j in jobs:
                 try:
-                    if isinstance(j.job_metadata, dict) and j.job_metadata.get('user_id') == user_id:
+                    if isinstance(j.data, dict) and j.data.get('user_id') == user_id:
                         filtered.append(j)
                 except Exception:
                     continue
@@ -297,3 +315,60 @@ async def update_schedule_job_enabled(job_id: int, enabled: bool) -> bool:
         sj.enabled = bool(enabled)
         await sess.commit()
         return True
+
+
+async def get_rules(rule_id: Optional[int] = None):
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return []
+    async with async_session() as sess:
+        if rule_id:
+            res = await sess.execute(select(RuleTable).where(RuleTable.id == rule_id))
+            return res.scalars().all()
+        else:
+            res = await sess.execute(select(RuleTable))
+            return res.scalars().all()
+
+
+async def save_rule(rule: Dict[str, Any]):
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return None
+    async with async_session() as sess:
+        try:
+            rid = rule.get("id")
+            if rid:
+                res = await sess.execute(select(RuleTable).where(RuleTable.id == rid))
+                rt = res.scalar_one_or_none()
+                if rt:
+                    rt.name = rule.get("name", rt.name)
+                    rt.priority = rule.get("priority", rt.priority)
+                    rt.enabled = rule.get("enabled", rt.enabled)
+                    rt.content = rule.get("content", rt.content)
+                else:
+                    rt = RuleTable(
+                        name=rule.get("name", "unnamed"),
+                        priority=rule.get("priority", 1),
+                        enabled=rule.get("enabled", True),
+                        content=rule.get("content", {}),
+                        created_at=datetime.now(timezone.utc)
+                    )
+                    sess.add(rt)
+            else:
+                rt = RuleTable(
+                    name=rule.get("name", "unnamed"),
+                    priority=rule.get("priority", 1),
+                    enabled=rule.get("enabled", True),
+                    content=rule.get("content", {}),
+                    created_at=datetime.now(timezone.utc)
+                )
+                sess.add(rt)
+            await sess.commit()
+            await sess.refresh(rt)
+            return getattr(rt, 'id', None)
+        except Exception as e:
+            await sess.rollback()
+            logger.error(f"Failed to save rule: {e}")
+            return None

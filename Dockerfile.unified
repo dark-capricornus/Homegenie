@@ -44,37 +44,9 @@ COPY --from=flutter-builder /app/build/web /var/www/html
 # Copy nginx configuration
 COPY docker/frontend/nginx.conf /etc/nginx/sites-available/default
 
-# Create supervisor configuration
+# Copy supervisor configuration
 RUN mkdir -p /var/log/supervisor
-COPY <<EOF /etc/supervisor/conf.d/supervisord.conf
-[supervisord]
-nodaemon=true
-user=root
-logfile=/var/log/supervisor/supervisord.log
-pidfile=/var/run/supervisord.pid
-
-[program:nginx]
-command=nginx -g "daemon off;"
-stdout_logfile=/var/log/supervisor/nginx.log
-stderr_logfile=/var/log/supervisor/nginx.log
-autorestart=true
-
-[program:api]
-command=python api_runner.py
-directory=/app
-stdout_logfile=/var/log/supervisor/api.log
-stderr_logfile=/var/log/supervisor/api.log
-autorestart=true
-environment=MQTT_BROKER_HOST="%(ENV_MQTT_BROKER_HOST)s",MQTT_BROKER_PORT="%(ENV_MQTT_BROKER_PORT)s",API_HOST="0.0.0.0",API_PORT="8000"
-
-[program:simulator]
-command=python simulator_runner.py
-directory=/app
-stdout_logfile=/var/log/supervisor/simulator.log
-stderr_logfile=/var/log/supervisor/simulator.log
-autorestart=true
-environment=MQTT_BROKER_HOST="%(ENV_MQTT_BROKER_HOST)s",MQTT_BROKER_PORT="%(ENV_MQTT_BROKER_PORT)s"
-EOF
+COPY docker/backend/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Expose ports
 EXPOSE 8000 3000
@@ -83,5 +55,12 @@ EXPOSE 8000 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Start supervisor
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Copy Alembic config for auto-migration
+COPY alembic.ini ./alembic.ini
+COPY alembic/ ./alembic/
+
+# Startup script: run DB migrations then start supervisor
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]

@@ -31,14 +31,14 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f config/requirements.txt ]; then pip install -r config/requirements.txt; fi
 
-      - name: Run linters (optional)
+      - name: Run linters
         run: |
           echo "Running lint (flake8 if available)"
-          if python -c "import flake8" 2>/dev/null; then flake8 || true; fi
+          if python -c "import flake8" 2>/dev/null; then flake8 --max-line-length=120 --exclude=.git,__pycache__,build,dist || true; fi
 
       - name: Run pytest (compatibility mode)
         env:
           API_HOST: ${{ env.API_HOST }}
           API_PORT: ${{ env.API_PORT }}
         run: |
-          pytest -q || true
+          pytest -q --tb=short

@@ -63,7 +63,8 @@ class OllamaProvider(LLMProvider):
         self.host = host.rstrip('/')
         self.model = model
         self.timeout = timeout
-        self.endpoint = f"{self.host}/api/generate"
+        self.endpoint = f"{self.host}/api/chat"
+        self._session = requests.Session()
         
         logger.info(f"[OLLAMA] Initialized provider: {model} @ {host}")
     
@@ -73,10 +74,10 @@ class OllamaProvider(LLMProvider):
     
     def query(self, prompt: str, expect_json: bool = False) -> Optional[Dict[str, Any] | str]:
         """
-        Send a query to Ollama.
+        Send a query to Ollama using the /api/chat endpoint with proper message roles.
         
         Args:
-            prompt: The prompt to send
+            prompt: The prompt to send (may contain system prompt separated by \\n\\n)
             expect_json: If True, instruct model to return JSON
             
         Returns:
@@ -86,51 +87,59 @@ class OllamaProvider(LLMProvider):
             logger.warning("[OLLAMA] Empty prompt provided")
             return None
         
-        # Add JSON instruction if requested
-        full_prompt = prompt
-        if expect_json:
-            full_prompt += "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no explanations."
+        # Split system/user prompt if concatenated by LLMClient
+        messages = []
+        if "\n\n" in prompt:
+            parts = prompt.split("\n\n", 1)
+            messages.append({"role": "system", "content": parts[0]})
+            user_content = parts[1]
+        else:
+            user_content = prompt
         
-        # Prepare request
+        if expect_json:
+            user_content += "\nRespond ONLY with a valid JSON array. No markdown."
+        messages.append({"role": "user", "content": user_content})
+        
         payload = {
             "model": self.model,
-            "prompt": full_prompt,
-            "stream": False
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "num_predict": 256,
+                "temperature": 0.1
+            },
+            "keep_alive": "10m"
         }
+        if expect_json:
+            payload["format"] = "json"
         
         try:
-            logger.debug(f"[OLLAMA] Sending request to {self.endpoint}")
+            logger.debug(f"[OLLAMA] Sending chat request to {self.endpoint}")
             
-            response = requests.post(
+            response = self._session.post(
                 self.endpoint,
                 json=payload,
                 timeout=self.timeout
             )
             
-            # Check HTTP status
             if response.status_code != 200:
                 logger.error(f"[OLLAMA] HTTP {response.status_code}: {response.text[:200]}")
                 return None
             
-            # Parse response
             data = response.json()
+            response_text = data.get("message", {}).get("content", "")
             
-            # Extract response text
-            response_text = data.get("response", "")
-            
-            # Guard against empty responses
             if not response_text or not response_text.strip():
                 logger.warning("[OLLAMA] Received empty response from model")
                 return None
             
             response_text = response_text.strip()
-            logger.debug(f"[OLLAMA] Received response: {len(response_text)} chars")
+            eval_stats = f"total_duration={data.get('total_duration', 0) / 1e9:.1f}s" if 'total_duration' in data else ""
+            logger.info(f"[OLLAMA] Response: {len(response_text)} chars {eval_stats}")
             
-            # Return as-is if not expecting JSON
             if not expect_json:
                 return response_text
             
-            # Otherwise, caller will parse JSON separately
             return response_text
             
         except requests.exceptions.ConnectionError:

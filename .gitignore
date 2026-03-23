@@ -52,21 +52,22 @@ docs/
 docker/mosquitto/data/mosquitto.db
 
 #test files
-tests/
+# tests/
 
+# .env is ignored, but .env.example should be tracked if it exists (it's safe)
 .env
-.env.example
+# .env.example  <-- Removed from ignore since it's a template
 logs/
 env/
 .vscode/
-alembic/
+# alembic/  <-- Removed from ignore to track migrations
 .pytest_cache/
 .mypy_cache/
 .scripts/
 
-*.ini
-*.bat
-*.txt
+# *.ini  <-- Removed to track config files like alembic.ini
+# *.bat
+# *.txt  <-- Removed to track requirements.txt
 pgdata/
 n8n/
-# tests/
+tests/

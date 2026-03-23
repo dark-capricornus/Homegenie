@@ -26,7 +26,33 @@ class ContextStore:
         self._lock = threading.Lock()  # For thread safety
         self._async_lock = asyncio.Lock()  # For asyncio safety
         self._last_updated: Dict[str, datetime] = {}
-    
+        self._subscribers = []  # List of callbacks: (topic, payload) -> None
+
+    def subscribe(self, callback):
+        """Add a subscriber callback."""
+        with self._lock:
+            if callback not in self._subscribers:
+                self._subscribers.append(callback)
+
+    def unsubscribe(self, callback):
+        """Remove a subscriber callback."""
+        with self._lock:
+            if callback in self._subscribers:
+                self._subscribers.remove(callback)
+
+    def _notify(self, topic: str, payload: Any):
+        """Notify all subscribers of a change."""
+        # Work on a copy to avoid deadlocks or modification during iteration
+        with self._lock:
+            subs = list(self._subscribers)
+        
+        for sub in subs:
+            try:
+                sub(topic, payload)
+            except Exception as e:
+                # We don't want one bad subscriber to break others
+                pass
+
     def update_state(self, topic: str, payload: Any) -> None:
         """
         Update the state for a given topic in a thread-safe manner.
@@ -38,6 +64,7 @@ class ContextStore:
         with self._lock:
             self._states[topic] = payload
             self._last_updated[topic] = datetime.now(timezone.utc)
+        self._notify(topic, payload)
     
     async def async_update_state(self, topic: str, payload: Any) -> None:
         """
@@ -50,6 +77,7 @@ class ContextStore:
         async with self._async_lock:
             self._states[topic] = payload
             self._last_updated[topic] = datetime.now(timezone.utc)
+        self._notify(topic, payload)
 
     def update_probe_status(self, name: str, status: str, state: Optional[Dict[str, Any]] = None, error: Optional[str] = None, last_seen: Optional[datetime] = None) -> None:
         """
@@ -62,7 +90,7 @@ class ContextStore:
             error (Optional[str]): Error message (if failed)
             last_seen (Optional[datetime]): Timestamp of last successful probe
         """
-        payload = {
+        payload: Dict[str, Any] = {
             "status": status,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -77,7 +105,7 @@ class ContextStore:
 
     async def async_update_probe_status(self, name: str, status: str, state: Optional[Dict[str, Any]] = None, error: Optional[str] = None, last_seen: Optional[datetime] = None) -> None:
         """Async version of update_probe_status."""
-        payload = {
+        payload: Dict[str, Any] = {
             "status": status,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }

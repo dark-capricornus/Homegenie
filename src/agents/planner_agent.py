@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+import inspect
 import logging
 import json
 import re
@@ -35,6 +36,7 @@ class PlannerAgent:
         # Otherwise checking env vars for direct API usage could be added here.
         self.llm_client = llm_client
         self.llm_enabled = (os.getenv("LLM_ENABLED", "false").lower() in ("1", "true", "yes"))
+        self._llm_is_async = inspect.iscoroutinefunction(llm_client) if llm_client else False
         
         # AI Workload Isolation: ThreadPoolExecutor for CPU-bound LLM work
         # This prevents blocking the main asyncio loop during LLM inference
@@ -62,13 +64,16 @@ class PlannerAgent:
             else:
                 context = {}
 
+        context_dict: Dict[str, Any] = context or {}
+
         # 2. Try LLM Planning
         if self.llm_enabled and self.llm_client:
+            _planner_timeout = float(os.getenv("PLANNER_TIMEOUT", "25.0"))
             try:
-                if asyncio.iscoroutinefunction(self.llm_client):
-                    # Async client support (mostly for tests)
-                    payload = self._construct_llm_payload(goal, context)
-                    response = await asyncio.wait_for(self.llm_client(payload), timeout=10.0)
+                if self._llm_is_async:
+                    # Async client support (Ollama/Gemini/Groq)
+                    payload = self._construct_llm_payload(goal, context_dict)
+                    response = await asyncio.wait_for(self.llm_client(payload), timeout=_planner_timeout)
                     plan = self._parse_llm_response(response)
                 else:
                     # Sync client via ThreadPoolExecutor (Standard isolation)
@@ -77,16 +82,16 @@ class PlannerAgent:
                         loop.run_in_executor(
                             self._llm_executor,
                             self._llm_plan_sync,
-                            goal, context, user_id
+                            goal, context_dict, user_id
                         ),
-                        timeout=10.0
+                        timeout=_planner_timeout
                     )
                 
                 if plan:
                     logger.info(f"✅ LLM plan generated for goal: {goal}")
                     return plan
             except asyncio.TimeoutError:
-                logger.warning(f"⏱️ LLM timeout after 10s, falling back to structured planner")
+                logger.warning(f"⏱️ LLM timeout after {_planner_timeout}s, falling back to structured planner")
             except Exception as e:
                 logger.error(f"❌ LLM planning failed: {e}, falling back to structured planner")
         
@@ -96,12 +101,17 @@ class PlannerAgent:
 
     def _construct_llm_payload(self, goal: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """Utility to build the payload for the LLM."""
+        # Extract clean device IDs from context keys like 'devices/light.kitchen/observed'
+        raw_keys = list(context.get('states', {}).keys())
+        devices = sorted(set(
+            k.split('/')[1] for k in raw_keys
+            if k.startswith('devices/') and '/observed' in k
+        ))
         system_prompt = (
-            "You are a Smart Home Agent. Your task is to convert user goals into a JSON execution plan.\n"
-            "Available devices: " + json.dumps(list(context.get('states', {}).keys())) + "\n"
-            "Output Format: JSON Array of objects with 'device', 'action', 'value' (optional).\n"
-            "Example: [{'device': 'light.living_room', 'action': 'turn_on', 'value': true}]\n"
-            "Do NOT output markdown, just the JSON."
+            "You are a Smart Home Agent. Convert goals into a JSON array.\n"
+            "Devices: " + ", ".join(devices) + "\n"
+            "Format: [{\"device\":\"<id>\",\"action\":\"turn_on|turn_off|set\",\"value\":true}]\n"
+            "JSON only, no markdown."
         )
         return {
             "messages": [
@@ -124,39 +134,79 @@ class PlannerAgent:
         return []
 
 
+    _VALID_ACTIONS = {"turn_on", "turn_off", "set", "set_brightness", "set_temperature", "set_color", "set_speed", "lock", "unlock"}
+
     def _parse_llm_response(self, response: Any) -> List[Dict[str, Any]]:
-        """Robust parser for LLM responses (handles lists, dicts, and JSON strings)."""
+        """Robust parser for LLM responses with schema validation."""
+        raw_plan = self._extract_plan_from_response(response)
+        if raw_plan is None:
+            return []
+        return self._validate_and_normalize(raw_plan)
+
+    def _extract_plan_from_response(self, response: Any) -> Optional[List]:
+        """Extract a raw list from various LLM response formats."""
         if isinstance(response, list):
             return response
         if isinstance(response, dict):
-            if "plan" in response: return response["plan"]
-            if "content" in response: content = response["content"]
-            else: content = str(response)
+            if "plan" in response and isinstance(response["plan"], list):
+                return response["plan"]
+            if "device" in response:
+                return [response]
+            if "content" in response:
+                content = response["content"]
+            else:
+                content = str(response)
         else:
             content = str(response)
-            
+
         # Clean markdown code blocks
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
             content = content.split("```")[1].split("```")[0].strip()
-            
-        try:
-            plan = json.loads(content)
-            if isinstance(plan, list):
-                return plan
-            elif isinstance(plan, dict) and "plan" in plan:
-                return plan["plan"]
-        except json.JSONDecodeError:
-            # Try to handle single quote 'JSON' (not valid but common in LLM outputs if not forced)
+
+        for attempt_content in [content, re.sub(r"(?<=\w)'(?=\w)", '"', content)]:
             try:
-                # Replace ' with " and try again (naive fix)
-                plan = json.loads(content.replace("'", '"'))
-                if isinstance(plan, list): return plan
-            except Exception:
-                logger.error(f"Failed to parse LLM response: {content}")
-            
-        return []
+                plan = json.loads(attempt_content)
+                if isinstance(plan, list):
+                    return plan
+                if isinstance(plan, dict) and "plan" in plan and isinstance(plan["plan"], list):
+                    return plan["plan"]
+                if isinstance(plan, dict) and "device" in plan:
+                    return [plan]
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+        logger.error(f"Failed to parse LLM response as JSON: {content[:200]}")
+        return None
+
+    def _validate_and_normalize(self, tasks: List) -> List[Dict[str, Any]]:
+        """Validate each task has required fields and normalize device IDs."""
+        validated = []
+        for i, task in enumerate(tasks):
+            if not isinstance(task, dict):
+                logger.warning(f"Skipping non-dict task at index {i}: {task}")
+                continue
+            device = task.get("device")
+            action = task.get("action")
+            if not device or not isinstance(device, str):
+                logger.warning(f"Skipping task with missing/invalid device: {task}")
+                continue
+            if not action or not isinstance(action, str):
+                logger.warning(f"Skipping task with missing/invalid action: {task}")
+                continue
+            if action not in self._VALID_ACTIONS:
+                logger.warning(f"Unknown action '{action}' in task — allowing but flagging: {task}")
+            # Normalize device ID
+            if device.startswith("devices/"):
+                device = device.split("/")[1]
+            clean_task: Dict[str, Any] = {"device": device, "action": action}
+            if "value" in task:
+                clean_task["value"] = task["value"]
+            if "reason" in task:
+                clean_task["reason"] = task["reason"]
+            validated.append(clean_task)
+        return validated
 
 
     def _structured_fallback_plan(self, goal: str) -> List[Dict[str, Any]]:
@@ -210,6 +260,17 @@ class PlannerAgent:
                     {"device": "thermostat.main", "action": "set_temperature", "value": 18.0},
                     {"device": "lock.front_door", "action": "lock"}
                 ]
+            ),
+            (
+                r"(media|entertainment|music|tv)",
+                [
+                    {"device": "switch.outlet_living_room", "action": "turn_on"},
+                    {"device": "light.living_room", "action": "set_brightness", "value": 30}
+                ]
+            ),
+            (
+                r"kitchen.*media",
+                [{"device": "switch.outlet_kitchen", "action": "turn_on"}]
             )
         ]
         
@@ -251,7 +312,10 @@ class PlannerAgent:
             "ac": "thermostat.main",
             "heater": "thermostat.main",
             "door": "lock.front_door",
-            "fan": "fan.living_room"
+            "fan": "fan.living_room",
+            "media": "switch.outlet_living_room",
+            "tv": "switch.outlet_living_room",
+            "entertainment": "switch.outlet_living_room"
         }
         
         target_device = "light.living_room" # default default
@@ -273,7 +337,7 @@ class PlannerAgent:
              if detected_action == "turn_on": value = True
              if detected_action == "turn_off": value = False
         
-        task = {
+        task: Dict[str, Any] = {
             "device": target_device, 
             "action": detected_action,
             "reason": f"Dynamic match from '{goal}'"

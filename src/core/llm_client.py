@@ -30,7 +30,7 @@ class LLMConfig:
     
     # Ollama (Local)
     ollama_host: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2:latest"
+    ollama_model: str = "qwen2.5:7b-instruct"
     
     # Llama Cloud
     llama_cloud_api_key: Optional[str] = None
@@ -80,7 +80,13 @@ class LLMClient:
                     base_url=config.llama_cloud_base_url,
                     timeout=config.timeout
                 )
-            
+
+            if self.provider is None:
+                self.init_error = f"Provider '{provider}' failed to initialize"
+                logger.error(self.init_error)
+                self.enabled = False
+                return
+
             self.enabled = True
             logger.info(f"✅ LLM client initialized: {self.provider.provider_name} ({self.provider.model if hasattr(self.provider, 'model') else ''})")
         except Exception as e:
@@ -93,7 +99,7 @@ class LLMClient:
         return LLMConfig(
             provider=os.getenv("LLM_PROVIDER", "ollama"),
             ollama_host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-            ollama_model=os.getenv("OLLAMA_MODEL", "llama3.2:latest"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct"),
             llama_cloud_api_key=os.getenv("LLAMA_CLOUD_API_KEY"),
             llama_cloud_model=os.getenv("LLAMA_CLOUD_MODEL", "llama-3.3-70b-versatile"),
             llama_cloud_base_url=os.getenv("LLAMA_CLOUD_BASE_URL", "https://api.groq.com/openai/v1/chat/completions"),
@@ -119,6 +125,10 @@ class LLMClient:
         """
         if not self.enabled:
             logger.debug(f"LLM client disabled: {self.init_error}")
+            return None
+
+        if self.provider is None:
+            logger.error("LLM client provider is not initialized")
             return None
         
         # Construct full prompt
@@ -210,6 +220,10 @@ def test_llm_client():
         print(f"❌ LLM client is disabled: {client.init_error}")
         return False
     
+    if client.provider is None:
+        print("❌ LLM provider is not initialized")
+        return False
+
     print(f"✅ Client initialized: {client.provider.provider_name} ({client.config.ollama_model})\n")
     
     # Test 1: Connection test

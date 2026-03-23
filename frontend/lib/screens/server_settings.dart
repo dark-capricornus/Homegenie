@@ -39,6 +39,7 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
       final prefs = await SharedPreferences.getInstance();
       mqttOv = prefs.getString('mqtt_override_host');
     } catch (_) {}
+    if (!mounted) return;
     setState(() {
       _detected = base;
       _controller.text = ov ?? '';
@@ -49,9 +50,20 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
   Future<void> _testConnection() async {
     setState(() => _testing = true);
     final url = _controller.text.trim();
+    if (url.isEmpty) {
+      setState(() => _testing = false);
+      const snack = SnackBar(content: Text('Please enter a URL first'));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(snack);
+      return;
+    }
     final ok = await ApiLocator.testUrl(url);
     setState(() => _testing = false);
-    final snack = SnackBar(content: Text(ok ? 'Connection OK' : 'Connection failed'));
+    final snack = SnackBar(
+      content: Text(ok
+          ? 'SUCCESS: Backend detected at $url ✅'
+          : 'FAILURE: Connection test failed for $url ❌'),
+      backgroundColor: ok ? Colors.green.shade800 : Colors.red.shade800,
+    );
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(snack);
   }
 
@@ -60,11 +72,14 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
     final mqttText = _mqttController.text.trim();
     try {
       final svc = MqttService();
-      final ok = await svc.testConnection(overrideHost: mqttText.isEmpty ? null : mqttText);
-      final snack = SnackBar(content: Text(ok ? 'MQTT connection OK ✅' : 'MQTT connection FAILED ❌'));
+      final ok = await svc.testConnection(
+          overrideHost: mqttText.isEmpty ? null : mqttText);
+      final snack = SnackBar(
+          content:
+              Text(ok ? 'MQTT connection OK ✅' : 'MQTT connection FAILED ❌'));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(snack);
     } catch (e) {
-      final snack = SnackBar(content: Text('MQTT connection FAILED ❌'));
+      const snack = SnackBar(content: Text('MQTT connection FAILED ❌'));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(snack);
     } finally {
       setState(() => _testingMqtt = false);
@@ -102,45 +117,63 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Detected server (cached):', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text('Detected server (cached):',
+                style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             SelectableText(_detected.isEmpty ? 'None' : _detected),
             const SizedBox(height: 20),
-            const Text('Manual override (full base URL)', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text('Manual override (full base URL)',
+                style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             TextField(
               controller: _controller,
-              decoration: const InputDecoration(hintText: 'http://host:8000'),
+              decoration: const InputDecoration(
+                  hintText: 'http://host:8080 or http://host:8081'),
             ),
             const SizedBox(height: 12),
-            const Text('MQTT broker host override (optional)', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text('MQTT broker host override (optional)',
+                style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             TextField(
               controller: _mqttController,
-              decoration: const InputDecoration(hintText: 'host or IP (e.g. 192.168.1.10)'),
+              decoration: const InputDecoration(
+                  hintText: 'host or IP (e.g. 192.168.1.10)'),
             ),
             const SizedBox(height: 12),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 ElevatedButton.icon(
                   onPressed: _testing ? null : _testConnection,
-                  icon: _testing ? const SizedBox(width: 16, height: 16, child: const CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.link),
+                  icon: _testing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.link),
                   label: const Text('Test Connection'),
                 ),
-                const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: _testingMqtt ? null : _testMqttConnection,
-                  icon: _testingMqtt ? const SizedBox(width: 16, height: 16, child: const CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi),
+                  icon: _testingMqtt
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.wifi),
                   label: const Text('Test MQTT'),
                 ),
-                const SizedBox(width: 12),
                 OutlinedButton(
                   onPressed: _clearAndRedetect,
                   child: const Text('Clear Override & Re-Detect'),
                 ),
-                const Spacer(),
                 ElevatedButton(
                   onPressed: _saveOverride,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  ),
                   child: const Text('Save'),
                 ),
               ],
