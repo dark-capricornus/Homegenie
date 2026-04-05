@@ -1,0 +1,1389 @@
+{
+  "states": {
+    "sensor.bedroom": {
+      "device_type": "sensor",
+      "location": "bedroom",
+      "name": "Bedroom Window",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710969",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.731856+00:00",
+      "last_seen": "2026-04-05T07:29:13.985956+00:00"
+    },
+    "lock.front_entry": {
+      "device_type": "lock",
+      "location": "front_entry",
+      "name": "Front Door Lock",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710353",
+      "locked": true,
+      "battery": 100,
+      "last_access": "2026-04-05T07:15:13.558226",
+      "ts": "2026-04-05T07:29:13.724313+00:00",
+      "last_seen": "2026-04-05T07:29:14.095053+00:00"
+    },
+    "sensor.motion_living": {
+      "device_type": "sensor",
+      "location": "living_room",
+      "name": "Motion Sensor",
+      "detected": false,
+      "confidence": 0.0,
+      "battery": 78,
+      "online": true,
+      "timestamp": "2026-02-04T15:24:27.635750",
+      "ts": "2026-02-04T15:24:27.654499+00:00",
+      "last_seen": "2026-04-05T07:15:15.580352+00:00"
+    },
+    "sensor.outdoor_temp": {
+      "device_type": "sensor",
+      "location": "outdoor",
+      "name": "Outdoor Temperature",
+      "value": 22.9,
+      "unit": "°C",
+      "battery": 92,
+      "online": true,
+      "timestamp": "2026-02-04T15:24:27.635708",
+      "ts": "2026-02-04T15:24:27.651074+00:00",
+      "last_seen": "2026-04-05T07:15:15.580371+00:00"
+    },
+    "fan.bedroom": {
+      "device_type": "fan",
+      "location": "bedroom",
+      "name": "Bedroom Fan",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711244",
+      "state": "off",
+      "speed": 0,
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.740028+00:00",
+      "last_seen": "2026-04-05T07:29:13.935740+00:00"
+    },
+    "light.living_room": {
+      "device_type": "light",
+      "location": "living_room",
+      "name": "Living Room Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709445",
+      "state": "on",
+      "brightness": 80,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.711448+00:00",
+      "last_seen": "2026-04-05T07:29:13.844371+00:00"
+    },
+    "light.bedroom": {
+      "device_type": "light",
+      "location": "bedroom",
+      "name": "Bedroom Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709663",
+      "state": "on",
+      "brightness": 60,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.712845+00:00",
+      "last_seen": "2026-04-05T07:29:13.921784+00:00"
+    },
+    "media.living_room": {
+      "device_type": "media",
+      "location": "living_room",
+      "name": "Living Room TV",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710586",
+      "ts": "2026-04-05T07:29:13.727736+00:00",
+      "last_seen": "2026-04-05T07:29:14.068259+00:00"
+    },
+    "sensor.living_room": {
+      "device_type": "sensor",
+      "location": "living_room",
+      "name": "Living Room Window",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710808",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.730657+00:00",
+      "last_seen": "2026-04-05T07:29:13.985651+00:00"
+    },
+    "light.front_porch": {
+      "device_type": "light",
+      "location": "front_porch",
+      "name": "Front Porch Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710063",
+      "state": "on",
+      "brightness": 85,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.719897+00:00",
+      "last_seen": "2026-04-05T07:29:14.068719+00:00"
+    },
+    "light.kitchen": {
+      "device_type": "light",
+      "location": "kitchen",
+      "name": "Kitchen Under Cabinet",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709740",
+      "state": "on",
+      "brightness": 75,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.714445+00:00",
+      "last_seen": "2026-04-05T07:29:14.010200+00:00"
+    },
+    "lock.front_door": {
+      "device_type": "lock",
+      "location": "front_door",
+      "name": "Front Door Lock",
+      "locked": true,
+      "battery": 85,
+      "last_access": "2026-02-04T15:08:42.412497",
+      "online": true,
+      "timestamp": "2026-02-04T15:24:27.635668",
+      "ts": "2026-02-04T15:24:27.648991+00:00",
+      "last_seen": "2026-04-05T07:15:15.580560+00:00"
+    },
+    "media.kitchen": {
+      "device_type": "media",
+      "location": "kitchen",
+      "name": "Kitchen Radio",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710722",
+      "ts": "2026-04-05T07:29:13.729878+00:00",
+      "last_seen": "2026-04-05T07:29:14.047840+00:00"
+    },
+    "sensor.back_entry": {
+      "device_type": "sensor",
+      "location": "back_entry",
+      "name": "Back Door Sensor",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711155",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.734937+00:00",
+      "last_seen": "2026-04-05T07:29:14.091455+00:00"
+    },
+    "switch.kitchen": {
+      "device_type": "switch",
+      "location": "kitchen",
+      "name": "Kitchen Coffee Maker",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711291",
+      "state": "off",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.743194+00:00",
+      "last_seen": "2026-04-05T07:29:14.082111+00:00"
+    },
+    "light.hallway": {
+      "device_type": "light",
+      "location": "hallway",
+      "name": "Hallway Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709877",
+      "state": "on",
+      "brightness": 70,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.716438+00:00",
+      "last_seen": "2026-04-05T07:29:13.992099+00:00"
+    },
+    "sensor.outdoor": {
+      "device_type": "sensor",
+      "location": "outdoor",
+      "name": "Outdoor Light Sensor",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711019",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.732365+00:00",
+      "last_seen": "2026-04-05T07:29:13.985255+00:00"
+    },
+    "thermostat.living_room": {
+      "device_type": "thermostat",
+      "location": "living_room",
+      "name": "Main Thermostat",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710244",
+      "temperature": 22,
+      "target": 22,
+      "mode": "auto",
+      "humidity": 50,
+      "ts": "2026-04-05T07:29:13.721619+00:00",
+      "last_seen": "2026-04-05T07:29:14.060410+00:00"
+    },
+    "fan.living_room": {
+      "device_type": "fan",
+      "location": "living_room",
+      "name": "Living Room Fan",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711194",
+      "state": "off",
+      "speed": 0,
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.736891+00:00",
+      "last_seen": "2026-04-05T07:29:13.914958+00:00"
+    },
+    "sensor.hallway": {
+      "device_type": "sensor",
+      "location": "hallway",
+      "name": "Hallway Motion",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710911",
+      "value": 0.0,
+      "battery": 100,
+      "detected": false,
+      "confidence": 0.0,
+      "ts": "2026-04-05T07:29:13.731224+00:00",
+      "last_seen": "2026-04-05T07:29:13.985814+00:00"
+    },
+    "sensor.bathroom": {
+      "device_type": "sensor",
+      "location": "bathroom",
+      "name": "Bathroom Humidity",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711069",
+      "value": 50.0,
+      "battery": 100,
+      "unit": "%",
+      "ts": "2026-04-05T07:29:13.733273+00:00",
+      "last_seen": "2026-04-05T07:29:14.109669+00:00"
+    },
+    "lock.back_entry": {
+      "device_type": "lock",
+      "location": "back_entry",
+      "name": "Back Door Lock",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710439",
+      "locked": false,
+      "battery": 100,
+      "last_access": "2026-04-05T07:15:13.558231",
+      "ts": "2026-04-05T07:29:13.725163+00:00",
+      "last_seen": "2026-04-05T07:29:14.035412+00:00"
+    },
+    "media.bedroom": {
+      "device_type": "media",
+      "location": "bedroom",
+      "name": "Bedroom Speaker",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710676",
+      "ts": "2026-04-05T07:29:13.729102+00:00",
+      "last_seen": "2026-04-05T07:29:14.102303+00:00"
+    },
+    "sensor.front_entry": {
+      "device_type": "sensor",
+      "location": "front_entry",
+      "name": "Front Door Sensor",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711115",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.733920+00:00",
+      "last_seen": "2026-04-05T07:29:13.914634+00:00"
+    },
+    "light.bathroom": {
+      "device_type": "light",
+      "location": "bathroom",
+      "name": "Bathroom Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709926",
+      "state": "on",
+      "brightness": 90,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.718270+00:00",
+      "last_seen": "2026-04-05T07:29:13.954194+00:00"
+    },
+    "light.backyard": {
+      "device_type": "light",
+      "location": "backyard",
+      "name": "Backyard Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710181",
+      "state": "on",
+      "brightness": 75,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.720687+00:00",
+      "last_seen": "2026-04-05T07:29:14.009926+00:00"
+    },
+    "thermostat.bedroom": {
+      "device_type": "thermostat",
+      "location": "bedroom",
+      "name": "Bedroom Thermostat",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710302",
+      "temperature": 20,
+      "target": 20,
+      "mode": "auto",
+      "humidity": 50,
+      "ts": "2026-04-05T07:29:13.722762+00:00",
+      "last_seen": "2026-04-05T07:29:14.082470+00:00"
+    },
+    "switch.living_room": {
+      "device_type": "switch",
+      "location": "living_room",
+      "name": "Living Room Lamp",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711337",
+      "state": "on",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.744233+00:00",
+      "last_seen": "2026-04-05T07:29:14.075717+00:00"
+    },
+    "lock.garage": {
+      "device_type": "lock",
+      "location": "garage",
+      "name": "Garage Door Lock",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710484",
+      "locked": true,
+      "battery": 100,
+      "last_access": "2026-04-05T07:15:13.558236",
+      "ts": "2026-04-05T07:29:13.726519+00:00",
+      "last_seen": "2026-04-05T07:29:14.068524+00:00"
+    },
+    "living_room_main": {
+      "name": "Living Room Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "brightness",
+        "color",
+        "dimming"
+      ]
+    },
+    "bedroom_main": {
+      "name": "Bedroom Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "brightness",
+        "dimming"
+      ]
+    },
+    "kitchen_main": {
+      "name": "Kitchen Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Kitchen",
+      "metadata": [
+        "brightness"
+      ]
+    },
+    "kitchen_under_cabinet": {
+      "name": "Kitchen Under Cabinet",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Kitchen",
+      "metadata": [
+        "brightness",
+        "color"
+      ]
+    },
+    "hallway_main": {
+      "name": "Hallway Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Hallway",
+      "metadata": [
+        "brightness",
+        "motion_activation"
+      ]
+    },
+    "bathroom_main": {
+      "name": "Bathroom Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Bathroom",
+      "metadata": [
+        "brightness",
+        "dimming"
+      ]
+    },
+    "outdoor_front": {
+      "name": "Front Porch Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Front Porch",
+      "metadata": [
+        "brightness",
+        "motion_activation",
+        "scheduling"
+      ]
+    },
+    "outdoor_back": {
+      "name": "Backyard Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Backyard",
+      "metadata": [
+        "brightness",
+        "motion_activation"
+      ]
+    },
+    "main": {
+      "name": "Main Thermostat",
+      "device_type": "thermostat",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "heating",
+        "cooling",
+        "scheduling"
+      ]
+    },
+    "bedroom": {
+      "name": "Bedroom Thermostat",
+      "device_type": "thermostat",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "heating",
+        "cooling"
+      ]
+    },
+    "front_door": {
+      "name": "Front Door Lock",
+      "device_type": "lock",
+      "online": false,
+      "loading": true,
+      "location": "Front Entry",
+      "metadata": [
+        "keypad",
+        "remote_unlock",
+        "auto_lock"
+      ]
+    },
+    "back_door": {
+      "name": "Back Door Lock",
+      "device_type": "lock",
+      "online": false,
+      "loading": true,
+      "location": "Back Entry",
+      "metadata": [
+        "remote_unlock"
+      ]
+    },
+    "garage": {
+      "name": "Garage Door Lock",
+      "device_type": "lock",
+      "online": false,
+      "loading": true,
+      "location": "Garage",
+      "metadata": [
+        "remote_unlock",
+        "auto_lock"
+      ]
+    },
+    "living_room": {
+      "name": "Living Room TV",
+      "device_type": "media",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "volume",
+        "input_selection",
+        "power",
+        "streaming"
+      ]
+    },
+    "kitchen": {
+      "name": "Kitchen Radio",
+      "device_type": "media",
+      "online": false,
+      "loading": true,
+      "location": "Kitchen",
+      "metadata": [
+        "volume",
+        "radio",
+        "bluetooth"
+      ]
+    },
+    "motion_living": {
+      "name": "Living Room Motion",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "motion_detection",
+        "battery_monitor"
+      ]
+    },
+    "motion_hallway": {
+      "name": "Hallway Motion",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Hallway",
+      "metadata": [
+        "motion_detection",
+        "battery_monitor"
+      ]
+    },
+    "motion_bedroom": {
+      "name": "Bedroom Motion",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "motion_detection",
+        "battery_monitor"
+      ]
+    },
+    "temp_living_room": {
+      "name": "Living Room Temperature",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "temperature",
+        "humidity"
+      ]
+    },
+    "temp_outdoor": {
+      "name": "Outdoor Temperature",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Outdoor",
+      "metadata": [
+        "temperature",
+        "battery_monitor",
+        "weather_resistant"
+      ]
+    },
+    "humidity_bathroom": {
+      "name": "Bathroom Humidity",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Bathroom",
+      "metadata": [
+        "humidity",
+        "temperature",
+        "battery_monitor"
+      ]
+    },
+    "light_sensor_outdoor": {
+      "name": "Outdoor Light Sensor",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Outdoor",
+      "metadata": [
+        "light_level",
+        "battery_monitor",
+        "weather_resistant"
+      ]
+    },
+    "air_quality_living": {
+      "name": "Living Room Air Quality",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "co2",
+        "voc",
+        "pm25"
+      ]
+    },
+    "door_front": {
+      "name": "Front Door Sensor",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Front Entry",
+      "metadata": [
+        "open_close_detection",
+        "battery_monitor"
+      ]
+    },
+    "door_back": {
+      "name": "Back Door Sensor",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Back Entry",
+      "metadata": [
+        "open_close_detection",
+        "battery_monitor"
+      ]
+    },
+    "window_living": {
+      "name": "Living Room Window",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "open_close_detection",
+        "battery_monitor"
+      ]
+    },
+    "window_bedroom": {
+      "name": "Bedroom Window",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "open_close_detection",
+        "battery_monitor"
+      ]
+    },
+    "fan_living_room": {
+      "name": "Living Room Fan",
+      "device_type": "switch",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "speed_control",
+        "timer"
+      ]
+    },
+    "fan_bedroom": {
+      "name": "Bedroom Fan",
+      "device_type": "switch",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "speed_control",
+        "timer"
+      ]
+    },
+    "outlet_kitchen": {
+      "name": "Kitchen Coffee Maker",
+      "device_type": "switch",
+      "online": false,
+      "loading": true,
+      "location": "Kitchen",
+      "metadata": [
+        "scheduling",
+        "energy_monitoring"
+      ]
+    },
+    "outlet_living_room": {
+      "name": "Living Room Lamp",
+      "device_type": "switch",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "energy_monitoring"
+      ]
+    }
+  },
+  "devices": {
+    "sensor.bedroom": {
+      "device_type": "sensor",
+      "location": "bedroom",
+      "name": "Bedroom Window",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710969",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.731856+00:00",
+      "last_seen": "2026-04-05T07:29:13.985956+00:00"
+    },
+    "lock.front_entry": {
+      "device_type": "lock",
+      "location": "front_entry",
+      "name": "Front Door Lock",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710353",
+      "locked": true,
+      "battery": 100,
+      "last_access": "2026-04-05T07:15:13.558226",
+      "ts": "2026-04-05T07:29:13.724313+00:00",
+      "last_seen": "2026-04-05T07:29:14.095053+00:00"
+    },
+    "sensor.motion_living": {
+      "device_type": "sensor",
+      "location": "living_room",
+      "name": "Motion Sensor",
+      "detected": false,
+      "confidence": 0.0,
+      "battery": 78,
+      "online": true,
+      "timestamp": "2026-02-04T15:24:27.635750",
+      "ts": "2026-02-04T15:24:27.654499+00:00",
+      "last_seen": "2026-04-05T07:15:15.580352+00:00"
+    },
+    "sensor.outdoor_temp": {
+      "device_type": "sensor",
+      "location": "outdoor",
+      "name": "Outdoor Temperature",
+      "value": 22.9,
+      "unit": "°C",
+      "battery": 92,
+      "online": true,
+      "timestamp": "2026-02-04T15:24:27.635708",
+      "ts": "2026-02-04T15:24:27.651074+00:00",
+      "last_seen": "2026-04-05T07:15:15.580371+00:00"
+    },
+    "fan.bedroom": {
+      "device_type": "fan",
+      "location": "bedroom",
+      "name": "Bedroom Fan",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711244",
+      "state": "off",
+      "speed": 0,
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.740028+00:00",
+      "last_seen": "2026-04-05T07:29:13.935740+00:00"
+    },
+    "light.living_room": {
+      "device_type": "light",
+      "location": "living_room",
+      "name": "Living Room Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709445",
+      "state": "on",
+      "brightness": 80,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.711448+00:00",
+      "last_seen": "2026-04-05T07:29:13.844371+00:00"
+    },
+    "light.bedroom": {
+      "device_type": "light",
+      "location": "bedroom",
+      "name": "Bedroom Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709663",
+      "state": "on",
+      "brightness": 60,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.712845+00:00",
+      "last_seen": "2026-04-05T07:29:13.921784+00:00"
+    },
+    "media.living_room": {
+      "device_type": "media",
+      "location": "living_room",
+      "name": "Living Room TV",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710586",
+      "ts": "2026-04-05T07:29:13.727736+00:00",
+      "last_seen": "2026-04-05T07:29:14.068259+00:00"
+    },
+    "sensor.living_room": {
+      "device_type": "sensor",
+      "location": "living_room",
+      "name": "Living Room Window",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710808",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.730657+00:00",
+      "last_seen": "2026-04-05T07:29:13.985651+00:00"
+    },
+    "light.front_porch": {
+      "device_type": "light",
+      "location": "front_porch",
+      "name": "Front Porch Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710063",
+      "state": "on",
+      "brightness": 85,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.719897+00:00",
+      "last_seen": "2026-04-05T07:29:14.068719+00:00"
+    },
+    "light.kitchen": {
+      "device_type": "light",
+      "location": "kitchen",
+      "name": "Kitchen Under Cabinet",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709740",
+      "state": "on",
+      "brightness": 75,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.714445+00:00",
+      "last_seen": "2026-04-05T07:29:14.010200+00:00"
+    },
+    "lock.front_door": {
+      "device_type": "lock",
+      "location": "front_door",
+      "name": "Front Door Lock",
+      "locked": true,
+      "battery": 85,
+      "last_access": "2026-02-04T15:08:42.412497",
+      "online": true,
+      "timestamp": "2026-02-04T15:24:27.635668",
+      "ts": "2026-02-04T15:24:27.648991+00:00",
+      "last_seen": "2026-04-05T07:15:15.580560+00:00"
+    },
+    "media.kitchen": {
+      "device_type": "media",
+      "location": "kitchen",
+      "name": "Kitchen Radio",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710722",
+      "ts": "2026-04-05T07:29:13.729878+00:00",
+      "last_seen": "2026-04-05T07:29:14.047840+00:00"
+    },
+    "sensor.back_entry": {
+      "device_type": "sensor",
+      "location": "back_entry",
+      "name": "Back Door Sensor",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711155",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.734937+00:00",
+      "last_seen": "2026-04-05T07:29:14.091455+00:00"
+    },
+    "switch.kitchen": {
+      "device_type": "switch",
+      "location": "kitchen",
+      "name": "Kitchen Coffee Maker",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711291",
+      "state": "off",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.743194+00:00",
+      "last_seen": "2026-04-05T07:29:14.082111+00:00"
+    },
+    "light.hallway": {
+      "device_type": "light",
+      "location": "hallway",
+      "name": "Hallway Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709877",
+      "state": "on",
+      "brightness": 70,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.716438+00:00",
+      "last_seen": "2026-04-05T07:29:13.992099+00:00"
+    },
+    "sensor.outdoor": {
+      "device_type": "sensor",
+      "location": "outdoor",
+      "name": "Outdoor Light Sensor",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711019",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.732365+00:00",
+      "last_seen": "2026-04-05T07:29:13.985255+00:00"
+    },
+    "thermostat.living_room": {
+      "device_type": "thermostat",
+      "location": "living_room",
+      "name": "Main Thermostat",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710244",
+      "temperature": 22,
+      "target": 22,
+      "mode": "auto",
+      "humidity": 50,
+      "ts": "2026-04-05T07:29:13.721619+00:00",
+      "last_seen": "2026-04-05T07:29:14.060410+00:00"
+    },
+    "fan.living_room": {
+      "device_type": "fan",
+      "location": "living_room",
+      "name": "Living Room Fan",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711194",
+      "state": "off",
+      "speed": 0,
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.736891+00:00",
+      "last_seen": "2026-04-05T07:29:13.914958+00:00"
+    },
+    "sensor.hallway": {
+      "device_type": "sensor",
+      "location": "hallway",
+      "name": "Hallway Motion",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710911",
+      "value": 0.0,
+      "battery": 100,
+      "detected": false,
+      "confidence": 0.0,
+      "ts": "2026-04-05T07:29:13.731224+00:00",
+      "last_seen": "2026-04-05T07:29:13.985814+00:00"
+    },
+    "sensor.bathroom": {
+      "device_type": "sensor",
+      "location": "bathroom",
+      "name": "Bathroom Humidity",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711069",
+      "value": 50.0,
+      "battery": 100,
+      "unit": "%",
+      "ts": "2026-04-05T07:29:13.733273+00:00",
+      "last_seen": "2026-04-05T07:29:14.109669+00:00"
+    },
+    "lock.back_entry": {
+      "device_type": "lock",
+      "location": "back_entry",
+      "name": "Back Door Lock",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710439",
+      "locked": false,
+      "battery": 100,
+      "last_access": "2026-04-05T07:15:13.558231",
+      "ts": "2026-04-05T07:29:13.725163+00:00",
+      "last_seen": "2026-04-05T07:29:14.035412+00:00"
+    },
+    "media.bedroom": {
+      "device_type": "media",
+      "location": "bedroom",
+      "name": "Bedroom Speaker",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710676",
+      "ts": "2026-04-05T07:29:13.729102+00:00",
+      "last_seen": "2026-04-05T07:29:14.102303+00:00"
+    },
+    "sensor.front_entry": {
+      "device_type": "sensor",
+      "location": "front_entry",
+      "name": "Front Door Sensor",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711115",
+      "value": 0.0,
+      "battery": 100,
+      "ts": "2026-04-05T07:29:13.733920+00:00",
+      "last_seen": "2026-04-05T07:29:13.914634+00:00"
+    },
+    "light.bathroom": {
+      "device_type": "light",
+      "location": "bathroom",
+      "name": "Bathroom Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.709926",
+      "state": "on",
+      "brightness": 90,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.718270+00:00",
+      "last_seen": "2026-04-05T07:29:13.954194+00:00"
+    },
+    "light.backyard": {
+      "device_type": "light",
+      "location": "backyard",
+      "name": "Backyard Light",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710181",
+      "state": "on",
+      "brightness": 75,
+      "color": "white",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.720687+00:00",
+      "last_seen": "2026-04-05T07:29:14.009926+00:00"
+    },
+    "thermostat.bedroom": {
+      "device_type": "thermostat",
+      "location": "bedroom",
+      "name": "Bedroom Thermostat",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710302",
+      "temperature": 20,
+      "target": 20,
+      "mode": "auto",
+      "humidity": 50,
+      "ts": "2026-04-05T07:29:13.722762+00:00",
+      "last_seen": "2026-04-05T07:29:14.082470+00:00"
+    },
+    "switch.living_room": {
+      "device_type": "switch",
+      "location": "living_room",
+      "name": "Living Room Lamp",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.711337",
+      "state": "on",
+      "power_consumption": 0.0,
+      "ts": "2026-04-05T07:29:13.744233+00:00",
+      "last_seen": "2026-04-05T07:29:14.075717+00:00"
+    },
+    "lock.garage": {
+      "device_type": "lock",
+      "location": "garage",
+      "name": "Garage Door Lock",
+      "online": true,
+      "timestamp": "2026-04-05T07:29:13.710484",
+      "locked": true,
+      "battery": 100,
+      "last_access": "2026-04-05T07:15:13.558236",
+      "ts": "2026-04-05T07:29:13.726519+00:00",
+      "last_seen": "2026-04-05T07:29:14.068524+00:00"
+    },
+    "living_room_main": {
+      "name": "Living Room Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "brightness",
+        "color",
+        "dimming"
+      ]
+    },
+    "bedroom_main": {
+      "name": "Bedroom Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "brightness",
+        "dimming"
+      ]
+    },
+    "kitchen_main": {
+      "name": "Kitchen Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Kitchen",
+      "metadata": [
+        "brightness"
+      ]
+    },
+    "kitchen_under_cabinet": {
+      "name": "Kitchen Under Cabinet",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Kitchen",
+      "metadata": [
+        "brightness",
+        "color"
+      ]
+    },
+    "hallway_main": {
+      "name": "Hallway Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Hallway",
+      "metadata": [
+        "brightness",
+        "motion_activation"
+      ]
+    },
+    "bathroom_main": {
+      "name": "Bathroom Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Bathroom",
+      "metadata": [
+        "brightness",
+        "dimming"
+      ]
+    },
+    "outdoor_front": {
+      "name": "Front Porch Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Front Porch",
+      "metadata": [
+        "brightness",
+        "motion_activation",
+        "scheduling"
+      ]
+    },
+    "outdoor_back": {
+      "name": "Backyard Light",
+      "device_type": "light",
+      "online": false,
+      "loading": true,
+      "location": "Backyard",
+      "metadata": [
+        "brightness",
+        "motion_activation"
+      ]
+    },
+    "main": {
+      "name": "Main Thermostat",
+      "device_type": "thermostat",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "heating",
+        "cooling",
+        "scheduling"
+      ]
+    },
+    "bedroom": {
+      "name": "Bedroom Thermostat",
+      "device_type": "thermostat",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "heating",
+        "cooling"
+      ]
+    },
+    "front_door": {
+      "name": "Front Door Lock",
+      "device_type": "lock",
+      "online": false,
+      "loading": true,
+      "location": "Front Entry",
+      "metadata": [
+        "keypad",
+        "remote_unlock",
+        "auto_lock"
+      ]
+    },
+    "back_door": {
+      "name": "Back Door Lock",
+      "device_type": "lock",
+      "online": false,
+      "loading": true,
+      "location": "Back Entry",
+      "metadata": [
+        "remote_unlock"
+      ]
+    },
+    "garage": {
+      "name": "Garage Door Lock",
+      "device_type": "lock",
+      "online": false,
+      "loading": true,
+      "location": "Garage",
+      "metadata": [
+        "remote_unlock",
+        "auto_lock"
+      ]
+    },
+    "living_room": {
+      "name": "Living Room TV",
+      "device_type": "media",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "volume",
+        "input_selection",
+        "power",
+        "streaming"
+      ]
+    },
+    "kitchen": {
+      "name": "Kitchen Radio",
+      "device_type": "media",
+      "online": false,
+      "loading": true,
+      "location": "Kitchen",
+      "metadata": [
+        "volume",
+        "radio",
+        "bluetooth"
+      ]
+    },
+    "motion_living": {
+      "name": "Living Room Motion",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "motion_detection",
+        "battery_monitor"
+      ]
+    },
+    "motion_hallway": {
+      "name": "Hallway Motion",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Hallway",
+      "metadata": [
+        "motion_detection",
+        "battery_monitor"
+      ]
+    },
+    "motion_bedroom": {
+      "name": "Bedroom Motion",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "motion_detection",
+        "battery_monitor"
+      ]
+    },
+    "temp_living_room": {
+      "name": "Living Room Temperature",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "temperature",
+        "humidity"
+      ]
+    },
+    "temp_outdoor": {
+      "name": "Outdoor Temperature",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Outdoor",
+      "metadata": [
+        "temperature",
+        "battery_monitor",
+        "weather_resistant"
+      ]
+    },
+    "humidity_bathroom": {
+      "name": "Bathroom Humidity",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Bathroom",
+      "metadata": [
+        "humidity",
+        "temperature",
+        "battery_monitor"
+      ]
+    },
+    "light_sensor_outdoor": {
+      "name": "Outdoor Light Sensor",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Outdoor",
+      "metadata": [
+        "light_level",
+        "battery_monitor",
+        "weather_resistant"
+      ]
+    },
+    "air_quality_living": {
+      "name": "Living Room Air Quality",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "co2",
+        "voc",
+        "pm25"
+      ]
+    },
+    "door_front": {
+      "name": "Front Door Sensor",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Front Entry",
+      "metadata": [
+        "open_close_detection",
+        "battery_monitor"
+      ]
+    },
+    "door_back": {
+      "name": "Back Door Sensor",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Back Entry",
+      "metadata": [
+        "open_close_detection",
+        "battery_monitor"
+      ]
+    },
+    "window_living": {
+      "name": "Living Room Window",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "open_close_detection",
+        "battery_monitor"
+      ]
+    },
+    "window_bedroom": {
+      "name": "Bedroom Window",
+      "device_type": "sensor",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "open_close_detection",
+        "battery_monitor"
+      ]
+    },
+    "fan_living_room": {
+      "name": "Living Room Fan",
+      "device_type": "switch",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "speed_control",
+        "timer"
+      ]
+    },
+    "fan_bedroom": {
+      "name": "Bedroom Fan",
+      "device_type": "switch",
+      "online": false,
+      "loading": true,
+      "location": "Bedroom",
+      "metadata": [
+        "speed_control",
+        "timer"
+      ]
+    },
+    "outlet_kitchen": {
+      "name": "Kitchen Coffee Maker",
+      "device_type": "switch",
+      "online": false,
+      "loading": true,
+      "location": "Kitchen",
+      "metadata": [
+        "scheduling",
+        "energy_monitoring"
+      ]
+    },
+    "outlet_living_room": {
+      "name": "Living Room Lamp",
+      "device_type": "switch",
+      "online": false,
+      "loading": true,
+      "location": "Living Room",
+      "metadata": [
+        "energy_monitoring"
+      ]
+    }
+  },
+  "total_devices": 60
+}

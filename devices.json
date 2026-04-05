@@ -1,0 +1,493 @@
+{
+  "devices": {
+    "media.living_room": {
+      "device_id": "media.living_room",
+      "name": "media.living_room",
+      "type": null,
+      "state": {
+        "device_type": "media",
+        "location": "living_room",
+        "name": "Living Room TV",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564057",
+        "ts": "2026-04-05T07:19:13.597131+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.810163"
+    },
+    "sensor.bedroom": {
+      "device_id": "sensor.bedroom",
+      "name": "sensor.bedroom",
+      "type": null,
+      "state": {
+        "device_type": "sensor",
+        "location": "bedroom",
+        "name": "Bedroom Window",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564355",
+        "value": 0.0,
+        "battery": 100,
+        "ts": "2026-04-05T07:19:13.584908+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.838973"
+    },
+    "sensor.living_room": {
+      "device_id": "sensor.living_room",
+      "name": "sensor.living_room",
+      "type": null,
+      "state": {
+        "device_type": "sensor",
+        "location": "living_room",
+        "name": "Living Room Window",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564260",
+        "value": 0.0,
+        "battery": 100,
+        "ts": "2026-04-05T07:19:13.600894+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.861809"
+    },
+    "light.bedroom": {
+      "device_id": "light.bedroom",
+      "name": "light.bedroom",
+      "type": null,
+      "state": {
+        "device_type": "light",
+        "location": "bedroom",
+        "name": "Bedroom Light",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563387",
+        "state": "on",
+        "brightness": 60,
+        "color": "white",
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.565843+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.729619"
+    },
+    "fan.bedroom": {
+      "device_id": "fan.bedroom",
+      "name": "fan.bedroom",
+      "type": null,
+      "state": {
+        "device_type": "fan",
+        "location": "bedroom",
+        "name": "Bedroom Fan",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564634",
+        "state": "off",
+        "speed": 0,
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.609932+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.755615"
+    },
+    "sensor.motion_living": {
+      "device_id": "sensor.motion_living",
+      "name": "sensor.motion_living",
+      "type": null,
+      "state": {
+        "device_type": "sensor",
+        "location": "living_room",
+        "name": "Motion Sensor",
+        "detected": false,
+        "confidence": 0.0,
+        "battery": 78,
+        "online": true,
+        "timestamp": "2026-02-04T15:24:27.635750",
+        "ts": "2026-02-04T15:24:27.654499+00:00"
+      },
+      "last_updated": "2026-02-04T15:24:27.765394"
+    },
+    "sensor.outdoor_temp": {
+      "device_id": "sensor.outdoor_temp",
+      "name": "sensor.outdoor_temp",
+      "type": null,
+      "state": {
+        "device_type": "sensor",
+        "location": "outdoor",
+        "name": "Outdoor Temperature",
+        "value": 22.9,
+        "unit": "°C",
+        "battery": 92,
+        "online": true,
+        "timestamp": "2026-02-04T15:24:27.635708",
+        "ts": "2026-02-04T15:24:27.651074+00:00"
+      },
+      "last_updated": "2026-02-04T15:24:27.779994"
+    },
+    "lock.front_entry": {
+      "device_id": "lock.front_entry",
+      "name": "lock.front_entry",
+      "type": null,
+      "state": {
+        "device_type": "lock",
+        "location": "front_entry",
+        "name": "Front Door Lock",
+        "online": true,
+        "timestamp": "2026-04-03T18:48:07.105191",
+        "locked": true,
+        "battery": 100,
+        "last_access": "2026-04-03T17:42:13.519362",
+        "ts": "2026-04-03T18:48:07.114729+00:00"
+      },
+      "last_updated": "2026-04-03T18:48:07.302276"
+    },
+    "light.living_room": {
+      "device_id": "light.living_room",
+      "name": "light.living_room",
+      "type": null,
+      "state": {
+        "device_type": "light",
+        "location": "living_room",
+        "name": "Living Room Light",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563174",
+        "state": "on",
+        "brightness": 80,
+        "color": "white",
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.564008+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.808054"
+    },
+    "light.front_porch": {
+      "device_id": "light.front_porch",
+      "name": "light.front_porch",
+      "type": null,
+      "state": {
+        "device_type": "light",
+        "location": "front_porch",
+        "name": "Front Porch Light",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563591",
+        "state": "on",
+        "brightness": 85,
+        "color": "white",
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.574161+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.838177"
+    },
+    "sensor.back_entry": {
+      "device_id": "sensor.back_entry",
+      "name": "sensor.back_entry",
+      "type": null,
+      "state": {
+        "device_type": "sensor",
+        "location": "back_entry",
+        "name": "Back Door Sensor",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564542",
+        "value": 0.0,
+        "battery": 100,
+        "ts": "2026-04-05T07:19:13.587442+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.857392"
+    },
+    "lock.front_door": {
+      "device_id": "lock.front_door",
+      "name": "lock.front_door",
+      "type": null,
+      "state": {
+        "device_type": "lock",
+        "location": "front_door",
+        "name": "Front Door Lock",
+        "locked": true,
+        "battery": 85,
+        "last_access": "2026-02-04T15:08:42.412497",
+        "online": true,
+        "timestamp": "2026-02-04T15:24:27.635668",
+        "ts": "2026-02-04T15:24:27.648991+00:00"
+      },
+      "last_updated": "2026-02-04T15:24:27.781614"
+    },
+    "switch.kitchen": {
+      "device_id": "switch.kitchen",
+      "name": "switch.kitchen",
+      "type": null,
+      "state": {
+        "device_type": "switch",
+        "location": "kitchen",
+        "name": "Kitchen Coffee Maker",
+        "online": true,
+        "timestamp": "2026-02-04T15:48:43.683529",
+        "state": "off",
+        "power_consumption": 0.0,
+        "ts": "2026-02-04T15:48:43.724678+00:00"
+      },
+      "last_updated": "2026-02-04T15:48:44.105346"
+    },
+    "light.kitchen": {
+      "device_id": "light.kitchen",
+      "name": "light.kitchen",
+      "type": null,
+      "state": {
+        "device_type": "light",
+        "location": "kitchen",
+        "name": "Kitchen Under Cabinet",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563449",
+        "state": "on",
+        "brightness": 75,
+        "color": "white",
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.569092+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.631248"
+    },
+    "media.kitchen": {
+      "device_id": "media.kitchen",
+      "name": "media.kitchen",
+      "type": null,
+      "state": {
+        "device_type": "media",
+        "location": "kitchen",
+        "name": "Kitchen Radio",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564188",
+        "ts": "2026-04-05T07:19:13.582377+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.795964"
+    },
+    "light.hallway": {
+      "device_id": "light.hallway",
+      "name": "light.hallway",
+      "type": null,
+      "state": {
+        "device_type": "light",
+        "location": "hallway",
+        "name": "Hallway Light",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563538",
+        "state": "on",
+        "brightness": 70,
+        "color": "white",
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.571557+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.832930"
+    },
+    "sensor.hallway": {
+      "device_id": "sensor.hallway",
+      "name": "sensor.hallway",
+      "type": null,
+      "state": {
+        "device_type": "sensor",
+        "location": "hallway",
+        "name": "Hallway Motion",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564309",
+        "value": 0.0,
+        "battery": 100,
+        "detected": false,
+        "confidence": 0.0,
+        "ts": "2026-04-05T07:19:13.584570+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.774542"
+    },
+    "sensor.outdoor": {
+      "device_id": "sensor.outdoor",
+      "name": "sensor.outdoor",
+      "type": null,
+      "state": {
+        "device_type": "sensor",
+        "location": "outdoor",
+        "name": "Outdoor Light Sensor",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564398",
+        "value": 0.0,
+        "battery": 100,
+        "ts": "2026-04-05T07:19:13.603420+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.833008"
+    },
+    "fan.living_room": {
+      "device_id": "fan.living_room",
+      "name": "fan.living_room",
+      "type": null,
+      "state": {
+        "device_type": "fan",
+        "location": "living_room",
+        "name": "Living Room Fan",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564588",
+        "state": "off",
+        "speed": 0,
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.604641+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.834250"
+    },
+    "thermostat.living_room": {
+      "device_id": "thermostat.living_room",
+      "name": "thermostat.living_room",
+      "type": null,
+      "state": {
+        "device_type": "thermostat",
+        "location": "living_room",
+        "name": "Main Thermostat",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563651",
+        "temperature": 22,
+        "target": 22,
+        "mode": "auto",
+        "humidity": 50,
+        "ts": "2026-04-05T07:19:13.575850+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.847124"
+    },
+    "sensor.bathroom": {
+      "device_id": "sensor.bathroom",
+      "name": "sensor.bathroom",
+      "type": null,
+      "state": {
+        "device_type": "sensor",
+        "location": "bathroom",
+        "name": "Bathroom Humidity",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564442",
+        "value": 50.0,
+        "battery": 100,
+        "unit": "%",
+        "ts": "2026-04-05T07:19:13.585351+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.878716"
+    },
+    "light.bathroom": {
+      "device_id": "light.bathroom",
+      "name": "light.bathroom",
+      "type": null,
+      "state": {
+        "device_type": "light",
+        "location": "bathroom",
+        "name": "Bathroom Light",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563570",
+        "state": "on",
+        "brightness": 90,
+        "color": "white",
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.572777+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.751629"
+    },
+    "sensor.front_entry": {
+      "device_id": "sensor.front_entry",
+      "name": "sensor.front_entry",
+      "type": null,
+      "state": {
+        "device_type": "sensor",
+        "location": "front_entry",
+        "name": "Front Door Sensor",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564491",
+        "value": 0.0,
+        "battery": 100,
+        "ts": "2026-04-05T07:19:13.586701+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.766930"
+    },
+    "lock.back_entry": {
+      "device_id": "lock.back_entry",
+      "name": "lock.back_entry",
+      "type": null,
+      "state": {
+        "device_type": "lock",
+        "location": "back_entry",
+        "name": "Back Door Lock",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563871",
+        "locked": false,
+        "battery": 100,
+        "last_access": "2026-04-05T07:15:13.558231",
+        "ts": "2026-04-05T07:19:13.594813+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.789959"
+    },
+    "media.bedroom": {
+      "device_id": "media.bedroom",
+      "name": "media.bedroom",
+      "type": null,
+      "state": {
+        "device_type": "media",
+        "location": "bedroom",
+        "name": "Bedroom Speaker",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564127",
+        "ts": "2026-04-05T07:19:13.581757+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.831901"
+    },
+    "light.backyard": {
+      "device_id": "light.backyard",
+      "name": "light.backyard",
+      "type": null,
+      "state": {
+        "device_type": "light",
+        "location": "backyard",
+        "name": "Backyard Light",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563610",
+        "state": "on",
+        "brightness": 75,
+        "color": "white",
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.574851+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.852772"
+    },
+    "lock.garage": {
+      "device_id": "lock.garage",
+      "name": "lock.garage",
+      "type": null,
+      "state": {
+        "device_type": "lock",
+        "location": "garage",
+        "name": "Garage Door Lock",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564006",
+        "locked": true,
+        "battery": 100,
+        "last_access": "2026-04-05T07:15:13.558236",
+        "ts": "2026-04-05T07:19:13.579425+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.790700"
+    },
+    "thermostat.bedroom": {
+      "device_id": "thermostat.bedroom",
+      "name": "thermostat.bedroom",
+      "type": null,
+      "state": {
+        "device_type": "thermostat",
+        "location": "bedroom",
+        "name": "Bedroom Thermostat",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.563698",
+        "temperature": 20,
+        "target": 20,
+        "mode": "auto",
+        "humidity": 50,
+        "ts": "2026-04-05T07:19:13.592559+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.809029"
+    },
+    "switch.living_room": {
+      "device_id": "switch.living_room",
+      "name": "switch.living_room",
+      "type": null,
+      "state": {
+        "device_type": "switch",
+        "location": "living_room",
+        "name": "Living Room Lamp",
+        "online": true,
+        "timestamp": "2026-04-05T07:19:13.564723",
+        "state": "on",
+        "power_consumption": 0.0,
+        "ts": "2026-04-05T07:19:13.612219+00:00"
+      },
+      "last_updated": "2026-04-05T07:19:13.860598"
+    }
+  },
+  "total_devices": 29,
+  "retrieved_at": "2026-04-05T07:19:38.820071"
+}
