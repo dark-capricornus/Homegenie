@@ -65,7 +65,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
     Widget content;
     if (ctrl.isLoading && ctrl.devices.isEmpty) {
-      content = _buildLoadingState();
+      content = _buildLoadingState('Synchronizing home state...');
+    } else if (!ctrl.wsConnected && ctrl.devices.isEmpty) {
+      content = _buildLoadingState('Connecting to HomeGenie stream...');
     } else {
       content = ResponsiveBuilder(
         builder: (context, size) {
@@ -92,7 +94,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildLoadingState() {
+  Widget _buildLoadingState(String message) {
     final textSecondary = widget.isDark
         ? AppColors.darkTextSecondary
         : AppColors.lightTextSecondary;
@@ -102,8 +104,91 @@ class _DashboardPageState extends State<DashboardPage> {
         children: [
           const CircularProgressIndicator(color: AppColors.primary),
           const SizedBox(height: 16),
-          Text('Synchronizing home state...',
+          Text(message,
               style: TextStyle(color: textSecondary, fontSize: 13)),
+          const SizedBox(height: 24),
+          TextButton.icon(
+            onPressed: _showConnectionDialog,
+            icon: const Icon(Icons.settings_input_component_rounded, size: 16),
+            label: const Text('Manual Connection Settings', 
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConnectionDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: widget.isDark ? AppColors.darkSurface : Colors.white,
+        title: Text('Connect to Server',
+            style: TextStyle(
+                color: widget.isDark
+                    ? AppColors.darkTextPrimary
+                    : AppColors.lightTextPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Enter your computer\'s LAN IP address (e.g. 192.168.1.50) to connect your mobile device.',
+                style: TextStyle(
+                    color: widget.isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                    fontSize: 12)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: TextStyle(
+                  color: widget.isDark
+                      ? AppColors.darkTextPrimary
+                      : AppColors.lightTextPrimary),
+              decoration: InputDecoration(
+                hintText: '192.168.1.XX',
+                hintStyle: TextStyle(
+                    color: widget.isDark
+                        ? AppColors.darkTextSecondary.withValues(alpha: 0.5)
+                        : AppColors.lightTextSecondary.withValues(alpha: 0.5)),
+                prefixText: 'http://',
+                suffixText: ':8081',
+                filled: true,
+                fillColor: widget.isDark ? AppColors.darkSurface2 : AppColors.lightSurface2,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final ip = controller.text.trim();
+              if (ip.isNotEmpty) {
+                final url = 'http://$ip:8081';
+                Navigator.pop(context);
+                final ctrl = context.read<DashboardController>();
+                await ctrl.setManualServerUrl(url);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Connect'),
+          ),
         ],
       ),
     );

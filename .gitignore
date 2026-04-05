@@ -16,6 +16,7 @@ __pycache__/
 env/
 venv/
 .venv/
+.env.example
 
 # IDE files
 .vscode/
@@ -56,7 +57,7 @@ docker/mosquitto/data/mosquitto.db
 
 # .env is ignored, but .env.example should be tracked if it exists (it's safe)
 .env
-# .env.example  <-- Removed from ignore since it's a template
+.env.example
 logs/
 env/
 .vscode/

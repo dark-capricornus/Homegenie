@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 
@@ -59,6 +59,49 @@ from fastapi import Depends
 API_KEY_NAME = "X-HomeGenie-Token"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
+try:
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+except ImportError:
+    pwd_context = None
+    print("⚠️ passlib not installed, running in unhashed mode (WARNING: insecure)")
+
+# Auth Schemas
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    username: str
+
+
+# Automation Rule Schemas
+class ConditionModel(BaseModel):
+    field: str
+    operator: str
+    value: Any = None
+
+class OutcomeModel(BaseModel):
+    type: str
+    code: str
+    metadata: Dict[str, Any] = {}
+
+class RuleModel(BaseModel):
+    id: Optional[int] = None
+    name: str
+    priority: int = 0
+    enabled: bool = True
+    conditions: List[ConditionModel]
+    outcome: OutcomeModel
+
+
 async def verify_api_key(api_key: str = Depends(api_key_header)):
     """Validates the incoming API key against the environment token."""
     expected_key = os.getenv("HOMEGENIE_API_KEY")
@@ -72,12 +115,25 @@ async def verify_api_key(api_key: str = Depends(api_key_header)):
         # Allow a dev-only fallback outside production
         expected_key = "homegenie_dev_token_123"
         logger.warning("HOMEGENIE_API_KEY not set — using insecure dev default. Set it before deploying.")
-    if not api_key or api_key != expected_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or missing API Key"
-        )
-    return api_key
+    
+    # Simple check for now: allow static key or a username:token format
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API Key")
+        
+    if api_key == expected_key:
+        return api_key
+        
+    # Check if it's a "user_token_" prefix (mock JWT for now)
+    if api_key.startswith("user_token_"):
+        username = api_key.replace("user_token_", "")
+        user = await db_v2.get_user_by_username(username)
+        if user:
+            return api_key
+            
+    raise HTTPException(
+        status_code=401,
+        detail="Invalid API Key"
+    )
 
 
 from src.core.feature_flags import flags
@@ -949,11 +1005,10 @@ if os.getenv("ENVIRONMENT", "development").lower() != "production":
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if os.getenv("ENVIRONMENT", "development").lower() != "production" else (_explicit_origins if _explicit_origins else ["*"]),
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
 )
 
 
@@ -1007,6 +1062,65 @@ class CommandRequest(BaseModel):
     value: Optional[Any] = None
     params: Optional[Dict[str, Any]] = {}
 
+
+
+# ── Authentication Endpoints ──────────────────────────────────────────
+
+@app.post("/api/auth/register", response_model=Token)
+async def register(user_data: UserCreate):
+    """Register a new user with BCrypt hashing."""
+    existing = await db_v2.get_user_by_username(user_data.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    hashed = pwd_context.hash(user_data.password) if pwd_context else user_data.password
+    user = db_v2.User(
+        username=user_data.username,
+        email=user_data.email,
+        hashed_password=hashed
+    )
+    await db_v2.create_user(user)
+    
+    # In a real app, use JWT. For now, we use a simple prefix.
+    return {
+        "access_token": f"user_token_{user.username}",
+        "token_type": "bearer",
+        "username": user.username
+    }
+
+@app.post("/api/auth/login", response_model=Token)
+async def login(user_data: UserLogin):
+    """Log in and return a token."""
+    user = await db_v2.get_user_by_username(user_data.username)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    if pwd_context:
+        if not pwd_context.verify(user_data.password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+    elif user_data.password != user.hashed_password:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    return {
+        "access_token": f"user_token_{user.username}",
+        "token_type": "bearer",
+        "username": user.username
+    }
+
+@app.get("/api/auth/me")
+async def get_me(api_key: str = Depends(verify_api_key)):
+    """Return info about the current authenticated user."""
+    if api_key.startswith("user_token_"):
+        username = api_key.replace("user_token_", "")
+        user = await db_v2.get_user_by_username(username)
+        if user:
+            return {
+                "username": user.username,
+                "email": user.email,
+                "created_at": user.created_at.isoformat()
+            }
+    
+    return {"username": "admin", "role": "root"}
 
 
 # API Endpoints
@@ -1189,21 +1303,191 @@ async def health_check():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
-@app.get("/devices")
 @app.get("/state")
+@app.get("/api/state")
 async def get_system_state():
     """Get current system state from ContextStore normalized for DashboardController."""
     start_time = datetime.now()
     raw_data = context_store.dump()
     states = {}
+    
     for topic, payload in raw_data.get('states', {}).items():
         if topic.startswith("devices/") and topic.endswith("/observed"):
             device_id = topic.split("/")[1]
             states[device_id] = payload
     
+    # 2. Extract devices from simulator probes (e.g., local_simulator)
+    for topic, payload in raw_data.get('states', {}).items():
+        if topic.startswith("probes/"):
+            # Check if this probe data contains 'state' (from httpx response) 
+            # and 'states'/'devices' inside it
+            probe_state = payload.get('state', {})
+            if isinstance(probe_state, dict):
+                sim_devices = probe_state.get('states') or probe_state.get('devices') or {}
+                if isinstance(sim_devices, dict):
+                    for dev_id, dev_state in sim_devices.items():
+                        if dev_id not in states:
+                            states[dev_id] = dev_state
+    
+    # 3. Fallback: Add skeleton devices from config if they are missing
+    # This ensures the frontend doesn't get 0 items on a "cold start" race
+    config_paths = [
+        os.path.join(os.getcwd(), 'config', 'devices.json'),
+        os.path.join(os.getcwd(), 'docker', 'simulators', 'devices.json')
+    ]
+    for path in config_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    config_data = json.load(f)
+                    device_list = []
+                    if isinstance(config_data, list):
+                        device_list = config_data
+                    elif isinstance(config_data, dict):
+                        for category, d_list in config_data.items():
+                            if isinstance(d_list, list):
+                                for d in d_list:
+                                    if isinstance(d, dict):
+                                        if 'category' not in d: d['category'] = category
+                                        device_list.append(d)
+                    
+                    for d in device_list:
+                        dev_id = d.get('id')
+                        if dev_id and dev_id not in states:
+                            # Use simple parsing if dots present, else fallback
+                            d_type = d.get('category') or (dev_id.split('.')[0] if '.' in dev_id else 'unknown')
+                            states[dev_id] = {
+                                "name": d.get('name', dev_id),
+                                "device_type": d_type,
+                                "online": False,
+                                "loading": True,
+                                "location": d.get('location', 'unknown'),
+                                "metadata": d.get('features', [])
+                            }
+                # If we found items in one path, that's enough
+                if len(device_list) > 0:
+                    break
+            except Exception as e:
+                logger.debug(f"Skeleton load failed for {path}: {e}")
+
     duration = (datetime.now() - start_time).total_seconds()
     logger.info(f"GET /state - {len(states)} devices - {duration:.3f}s")
-    return {"states": states, "total_devices": len(states)}
+    return {"states": states, "devices": states, "total_devices": len(states)}
+
+
+@app.get("/history/energy")
+async def get_energy_history(
+    device_id: Optional[str] = None,
+    days: int = Query(default=1, ge=1, le=31),
+    api_key: str = Depends(verify_api_key)
+):
+    """Fetch historical energy data for visualization."""
+    from src.core import db_async as db_v2
+    # Calculate start time
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
+    samples = await db_v2.get_energy_history(device_id=device_id, start_date=start_date)
+    
+    # Simple aggregation by hour to keep payload reasonable
+    # In a real app we'd do this in SQL, but for now we aggregate in memory
+    history = {}
+    for s in samples:
+        # Ensure timestamp is offset-aware
+        ts = s.timestamp
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+            
+        # Key by hour: "2024-04-03T14:00:00"
+        hour_key = ts.strftime("%Y-%m-%dT%H:00:00")
+        if hour_key not in history:
+            history[hour_key] = {"watts": 0.0, "count": 0}
+        history[hour_key]["watts"] += s.power_watts
+        history[hour_key]["count"] += 1
+    
+    # Format for chart
+    result = []
+    for ts_str, data in sorted(history.items()):
+        result.append({
+            "timestamp": ts_str,
+            "avg_watts": round(data["watts"] / data["count"], 2)
+        })
+    
+    return {"device_id": device_id, "history": result}
+
+
+@app.get("/history/devices")
+async def get_device_consumption_breakdown(
+    days: int = Query(default=1, ge=1, le=31),
+    api_key: str = Depends(verify_api_key)
+):
+    """Fetch energy consumption share per device."""
+    from src.core import db_async as db_v2
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
+    samples = await db_v2.get_energy_history(start_date=start_date)
+    
+    breakdown = {}
+    total_watts = 0.0
+    for s in samples:
+        if s.device_id not in breakdown:
+            breakdown[s.device_id] = 0.0
+        breakdown[s.device_id] += s.power_watts
+        total_watts += s.power_watts
+    
+    results = []
+    for dev_id, watts in breakdown.items():
+        results.append({
+            "device_id": dev_id,
+            "total_watts": round(watts, 2),
+            "percentage": round((watts / total_watts * 100), 1) if total_watts > 0 else 0
+        })
+    
+    # Sort by consumption
+    results.sort(key=lambda x: x["total_watts"], reverse=True)
+    return {"breakdown": results, "total_power": round(total_watts, 2)}
+
+
+@app.get("/rules")
+async def list_rules(api_key: str = Depends(verify_api_key)):
+    """List all automation rules."""
+    from src.core import db_async as db_v2
+    rules = await db_v2.get_rules()
+    return {"rules": rules}
+
+
+@app.post("/rules")
+async def save_rule(rule: RuleModel, api_key: str = Depends(verify_api_key)):
+    """Create or update an automation rule."""
+    from src.core import db_async as db_v2
+    
+    # Map pydantic model to RuleTable format
+    rule_id = await db_v2.save_rule({
+        "id": rule.id,
+        "name": rule.name,
+        "priority": rule.priority,
+        "enabled": rule.enabled,
+        "content": {
+            "conditions": [c.model_dump() for c in rule.conditions],
+            "outcome": rule.outcome.model_dump()
+        }
+    })
+    
+    # Reload rules in the agent
+    if automation_agent:
+        await automation_agent.reload_rules()
+    
+    return {"id": rule_id, "status": "saved"}
+
+
+@app.delete("/rules/{rule_id}")
+async def delete_rule(rule_id: int, api_key: str = Depends(verify_api_key)):
+    """Delete an automation rule."""
+    from src.core import db_async as db_v2
+    
+    success = await db_v2.delete_rule(rule_id)
+    
+    if success and automation_agent:
+        await automation_agent.reload_rules()
+        
+    return {"status": "deleted" if success else "failed"}
 
 import urllib.request
 @app.post("/chat/n8n")
@@ -1243,18 +1527,22 @@ async def transcribe_voice(
         filename = file.filename or "audio.opus"
         mime_type = file.content_type or "audio/ogg"
 
-        # Convert uploaded audio (opus/webm/wav) to PCM 16kHz 16-bit mono for Vosk
+        # Convert uploaded audio (opus/webm/wav/aac/m4a) to PCM 16kHz 16-bit mono for Vosk
         try:
             from pydub import AudioSegment
 
-            if "opus" in filename.lower() or "opus" in mime_type:
-                fmt = "ogg"  # opus is carried in ogg container
+            if "opus" in filename.lower() or "ogg" in mime_type:
+                fmt = "ogg"
             elif "webm" in filename.lower() or "webm" in mime_type:
                 fmt = "webm"
+            elif "aac" in filename.lower() or "aac" in mime_type:
+                fmt = "aac"
+            elif "m4a" in filename.lower() or "mp4" in mime_type:
+                fmt = "m4a"
             elif "wav" in filename.lower():
                 fmt = "wav"
             else:
-                fmt = "ogg"
+                fmt = None # Let ffmpeg/pydub guess
 
             audio_seg = AudioSegment.from_file(_io.BytesIO(audio_content), format=fmt)
             audio_seg = audio_seg.set_frame_rate(16000).set_channels(1).set_sample_width(2)
@@ -1274,29 +1562,30 @@ async def transcribe_voice(
         if not transcript_text.strip():
             return {"status": "empty", "transcript": ""}
 
-        # Optionally proxy to n8n (non-blocking, best-effort)
-        n8n_response = None
+        # Process with ReAct Agent (AI Intelligence Layer)
+        # This will use Ollama to understand intent and execute tools if needed
         try:
-            import urllib.request as _urlreq
-            req = _urlreq.Request(
-                "http://n8n:5678/webhook/homegenie-chat",
-                data=json.dumps({"message": transcript_text}).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
+            agent_result = await react_agent.process(
+                user_message=transcript_text,
+                user_id="voice_user" # standard voice session ID
             )
-            with _urlreq.urlopen(req, timeout=5) as resp:
-                raw = resp.read().decode("utf-8")
-                try:
-                    n8n_response = json.loads(raw)
-                except Exception:
-                    n8n_response = {"response": raw}
-        except Exception as n8n_err:
-            logger.warning(f"n8n proxy failed (non-fatal): {n8n_err}")
-
-        response_data: dict = {"status": "success", "transcript": transcript_text}
-        if n8n_response:
-            response_data["n8n_response"] = n8n_response
-        return response_data
+            logger.info(f"AI response to voice: '{agent_result.get('response')}'")
+            
+            return {
+                "status": "success",
+                "transcript": transcript_text,
+                "response": agent_result.get("response", ""),
+                "actions": agent_result.get("actions_taken", []),
+                "iterations": agent_result.get("iterations", 0)
+            }
+        except Exception as agent_err:
+            logger.error(f"AI processing failed for voice: {agent_err}")
+            return {
+                "status": "partial_success",
+                "transcript": transcript_text,
+                "response": "I heard you, but couldn't process the command with AI.",
+                "error": str(agent_err)
+            }
 
     except Exception as e:
         logger.error(f"Voice pipeline error (Vosk): {e}")
@@ -1798,6 +2087,62 @@ async def list_devices():
     except Exception as e:
         logger.error(f"Error listing devices: {e}")
         raise HTTPException(status_code=500, detail=f"Error listing devices: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Integration endpoints (Live mode platform management)
+# ---------------------------------------------------------------------------
+
+@app.get("/integrations")
+async def list_integrations_endpoint():
+    """List all supported platform integrations and their configuration status."""
+    try:
+        from src.core import db_async as db_v2
+        await db_v2.init_db()
+        integrations = await db_v2.list_integrations()
+        return {"integrations": integrations}
+    except Exception as e:
+        logger.warning(f"Failed to list integrations: {e}")
+        # Return defaults even if DB is down
+        from src.core.db_async import SUPPORTED_PLATFORMS
+        return {
+            "integrations": [
+                {"platform": p["platform"], "name": p["name"], "is_configured": False, "device_count": 0, "config": {}}
+                for p in SUPPORTED_PLATFORMS
+            ]
+        }
+
+
+@app.post("/integrations/{platform}/setup")
+async def setup_integration_endpoint(platform: str, body: dict):
+    """Configure a platform integration."""
+    try:
+        from src.core import db_async as db_v2
+        await db_v2.init_db()
+        config = body.get("config", {})
+        success = await db_v2.upsert_integration(platform, config)
+        if not success:
+            raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
+        return {"status": "ok", "platform": platform, "is_configured": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to setup integration {platform}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/integrations/{platform}/devices")
+async def list_integration_devices_endpoint(platform: str):
+    """List devices discovered through a specific platform."""
+    try:
+        from src.core import db_async as db_v2
+        await db_v2.init_db()
+        # For now, return all devices — platform filtering will come with actual integrations
+        devices = await db_v2.list_devices()
+        return {"platform": platform, "devices": list(devices.values())}
+    except Exception as e:
+        logger.warning(f"Failed to list {platform} devices: {e}")
+        return {"platform": platform, "devices": []}
 
 
 @app.get("/devices/{device_id}")

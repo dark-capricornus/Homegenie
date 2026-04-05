@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:homegenie_app/network/api_locator.dart';
-import 'package:homegenie_app/network/mqtt_service.dart';
 import 'package:homegenie_app/core/models/device.dart';
 import 'package:homegenie_app/network/websocket_service.dart';
-import 'package:mqtt_client/mqtt_client.dart';
 import 'package:homegenie_app/core/services/device_service.dart';
 import 'package:homegenie_app/core/services/ai_service.dart';
 import 'package:homegenie_app/core/services/insights_service.dart';
+import 'package:homegenie_app/core/services/auth_service.dart';
+import 'package:homegenie_app/core/services/integration_service.dart';
+import 'package:homegenie_app/core/models/user.dart';
+import 'package:homegenie_app/core/models/integration.dart';
 
 final _log = Logger('DashboardController');
 
@@ -43,14 +46,16 @@ class DashboardController extends ChangeNotifier {
   String statusMessage = '';
   String? lastGoalResult;
   ConnectionStatus connectionStatus = ConnectionStatus.unknown;
-  MqttService? _mqttService;
-  bool mqttConnected = false;
   Timer? _statusTimer;
   DateTime? _lastStatusCheck;
   late final WebSocketService _wsService;
+  StreamSubscription<bool>? _wsSubscription; // Single subscription
+  bool wsConnected = false;
   late final DeviceService _deviceService;
   late final AIService _aiService;
   late final InsightsService _insightsService;
+  AuthService? _authService;
+  AuthService get authService => _authService!;
 
   // Canonical device keys from /devices — the source of truth for WHICH
   // devices exist.  WebSocket/MQTT updates are only accepted for keys in
@@ -65,7 +70,95 @@ class DashboardController extends ChangeNotifier {
 
   // Frequency tracking
   Map<String, int> _deviceAccessCounts = {};
+  // Persistence keys
   static const String _kAccessCountsKey = 'device_access_counts';
+  static const String _kModeKey = 'homegenie_mode_demo';
+  static const String _kTokenKey = 'homegenie_auth_token';
+  static const String _kUserKey = 'homegenie_user_data';
+
+  // Mode state
+  bool? _isDemoMode;
+  bool get isDemoMode => _isDemoMode ?? true;
+  bool get hasModeSet => _isDemoMode != null;
+
+  // Authentication
+  bool _isLoggedIn = false;
+  bool get isLoggedIn => _isLoggedIn;
+  
+  User? _currentUser;
+  User? get currentUser => _currentUser;
+  
+  String? _token;
+  String? get token => _token;
+
+  Future<AuthService> _getValidatedAuth() async {
+    if (_authService != null) return _authService!;
+    
+    final baseUrl = await ApiLocator.getBaseUrl();
+    if (baseUrl.isNotEmpty && baseUrl.startsWith('http')) {
+      _authService = AuthService(baseUrl: baseUrl);
+      return _authService!;
+    }
+    
+    // Explicit fallback if somehow still empty/invalid
+    _authService = AuthService(baseUrl: 'http://localhost:8081');
+    return _authService!;
+  }
+
+  Future<void> login(String username, String password) async {
+    try {
+      final auth = await _getValidatedAuth();
+      final result = await auth.login(username, password);
+      _token = result['access_token'];
+      _isLoggedIn = true;
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kTokenKey, _token!);
+      
+      // Fetch user profile
+      _currentUser = await auth.getMe(_token!);
+      if (_currentUser != null) {
+        await prefs.setString(_kUserKey, _currentUser!.toJson());
+      }
+      
+      _scheduleNotify();
+    } catch (e) {
+      _log.severe('Login failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> register(String username, String password, {String? email}) async {
+    try {
+      final auth = await _getValidatedAuth();
+      final result = await auth.register(username, password, email: email);
+      _token = result['access_token'];
+      _isLoggedIn = true;
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kTokenKey, _token!);
+      
+      _currentUser = User(username: username, email: email);
+      await prefs.setString(_kUserKey, _currentUser!.toJson());
+      
+      _scheduleNotify();
+    } catch (e) {
+      _log.severe('Registration failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> logout() async {
+    _token = null;
+    _isLoggedIn = false;
+    _currentUser = null;
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kTokenKey);
+    await prefs.remove(_kUserKey);
+    
+    _scheduleNotify();
+  }
 
   // Chat state
   List<ChatMessage> chatMessages = [];
@@ -76,6 +169,21 @@ class DashboardController extends ChangeNotifier {
   List<Map<String, dynamic>> suggestions = [];
   Map<String, dynamic> analytics = {};
   bool isInsightsLoading = false;
+  
+  // History state
+  List<Map<String, dynamic>> energyHistory = [];
+  List<Map<String, dynamic>> energyBreakdown = [];
+  bool isHistoryLoading = false;
+  int currentHistoryDays = 1;
+  
+  // Rules state
+  List<Map<String, dynamic>> rules = [];
+  bool isRulesLoading = false;
+
+  // Integration state (Live mode)
+  List<PlatformIntegration> integrations = [];
+  bool isIntegrationsLoading = false;
+  late final IntegrationService _integrationService;
 
   // ---------------------------------------------------------------------------
   // Computed getters
@@ -126,6 +234,7 @@ class DashboardController extends ChangeNotifier {
     _deviceService = DeviceService();
     _aiService = AIService();
     _insightsService = InsightsService();
+    _integrationService = IntegrationService();
     _wsService = WebSocketService();
     _wsService.stream.listen(_handleWsMessage);
   }
@@ -176,7 +285,7 @@ class DashboardController extends ChangeNotifier {
     try {
       final url = await ApiLocator.getBaseUrl();
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('homegenie_api_token') ?? '';
+      final token = prefs.getString(_kTokenKey) ?? '';
 
       // Try the goal endpoint for device control commands
       final resp = await _aiService.sendGoal(url, message, token);
@@ -212,7 +321,7 @@ class DashboardController extends ChangeNotifier {
     try {
       final url = await ApiLocator.getBaseUrl();
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('homegenie_api_token') ?? '';
+      final token = prefs.getString(_kTokenKey) ?? '';
 
       final resp = await _aiService.transcribeAudio(url, token, audioBytes, filename);
 
@@ -263,24 +372,7 @@ class DashboardController extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   // MQTT / WebSocket handlers
   // ---------------------------------------------------------------------------
-  void _handleMqttMessage(List<MqttReceivedMessage<MqttMessage>> messages) {
-    for (final m in messages) {
-      final topic = m.topic;
-      final p = m.payload as MqttPublishMessage;
-      final payload =
-          MqttPublishPayload.bytesToStringAsString(p.payload.message);
-      try {
-        final data = json.decode(payload) as Map<String, dynamic>;
-        final key = _topicToDeviceKey(topic);
-        if (!_isKnownDevice(key)) continue;
-        _mergeDeviceState(key, data);
-        _syncToggle(key, _rawDevices[key]);
-      } catch (e) {
-        _log.warning('Error parsing MQTT payload: $e');
-      }
-    }
-    _scheduleNotify();
-  }
+
 
   void _handleWsMessage(Map<String, dynamic> data) {
     final type = data['type'];
@@ -318,7 +410,9 @@ class DashboardController extends ChangeNotifier {
       final payload = data['payload'];
       final key = _topicToDeviceKey(topic);
       if (!_isKnownDevice(key)) {
-        _log.fine('WS state_update rejected: topic=$topic key=$key');
+        if (!topic.startsWith('probes/')) {
+          _log.fine('WS state_update rejected: topic=$topic key=$key');
+        }
         return;
       }
       _mergeDeviceState(key, payload);
@@ -332,6 +426,7 @@ class DashboardController extends ChangeNotifier {
   /// hasn't completed), we REJECT all updates to prevent phantom devices.
   /// The authoritative device list will arrive shortly via fetchDevices().
   bool _isKnownDevice(String key) {
+    if (_isDemoMode == true) return true; // Always allow in Demo Mode
     if (_knownDeviceKeys.isEmpty) return false;
     return _knownDeviceKeys.contains(key);
   }
@@ -419,39 +514,139 @@ class DashboardController extends ChangeNotifier {
   // Lifecycle
   // ---------------------------------------------------------------------------
   Future<void> initialize() async {
-    _log.info('DashboardController initializing...');
+    _log.info('DASHBOARD_INIT: Full Reset Starting...');
+    isLoading = true;
+    notifyListeners();
+
+    await _loadAccessCounts();
+    await _loadSettings();
+
+    await _performFullServiceStart();
+  }
+
+  /// Internal helper to start/restart all network services without re-loading disk settings.
+  Future<void> _performFullServiceStart() async {
+    _log.info('_performFullServiceStart: isDemoMode=$_isDemoMode');
     isLoading = true;
     statusMessage = 'Discovering HomeGenie server...';
     notifyListeners();
-    _log.info('DASHBOARD_INIT: start');
-
-    await _loadAccessCounts();
 
     try {
       baseUrl = await ApiLocator.getBaseUrl();
+      if (_authService == null) {
+        _authService = AuthService(baseUrl: baseUrl);
+      }
+      
       statusMessage = 'Connected';
-      _log.info('DASHBOARD_INIT: calling fetchDevices');
-      await fetchDevices();
-      _log.info('DASHBOARD_INIT: fetchDevices complete');
-      await fetchInsights();
-      await _wsService.connect(baseUrl: baseUrl);
-      _statusTimer = Timer.periodic(
-          const Duration(seconds: 10), (_) => _checkConnection());
-      _mqttService = MqttService();
-      await _mqttService!.connect();
-      _mqttService!.connectedStream.listen((c) {
-        mqttConnected = c;
-        if (c) { _mqttService!.subscribe('home/+/+/state'); }
+
+      if (_isDemoMode == false) {
+        // Live mode: only fetch integrations, no demo devices
+        _log.info('_performFullServiceStart: LIVE mode — fetching integrations only');
+        _rawDevices = {};
+        _knownDeviceKeys = {};
+        deviceToggles = {};
+        await fetchIntegrations();
+      } else {
+        // Demo mode: fetch simulated devices + insights
+        _log.info('_performFullServiceStart: calling fetchDevices at $baseUrl');
+        await fetchDevices();
+        _log.info('_performFullServiceStart: fetchDevices complete');
+        await fetchInsights();
+      }
+
+      // Manage subscription to avoid duplicates
+      await _wsSubscription?.cancel();
+      _wsSubscription = _wsService.connectionStateStream.listen((c) {
+        wsConnected = c;
         notifyListeners();
       });
-      _mqttService!.messagesStream?.listen(_handleMqttMessage);
+
+      // WebSocket: connect in both modes (Live will use it for real device updates)
+      await _wsService.connect(baseUrl: baseUrl);
+
+      _statusTimer?.cancel();
+      _statusTimer = Timer.periodic(
+          const Duration(seconds: 10), (_) => _checkConnection());
     } catch (e) {
       statusMessage = 'Discovery failed: $e';
       _log.warning(statusMessage);
     } finally {
       isLoading = false;
-      notifyListeners();
+      _scheduleNotify();
     }
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_kModeKey)) {
+        _isDemoMode = prefs.getBool(_kModeKey);
+      }
+      
+      if (prefs.containsKey(_kTokenKey)) {
+        _token = prefs.getString(_kTokenKey);
+        _isLoggedIn = _token != null;
+        
+        if (prefs.containsKey(_kUserKey)) {
+          final userJson = prefs.getString(_kUserKey);
+          if (userJson != null) {
+            _currentUser = User.fromJson(userJson);
+          }
+        }
+      }
+      _log.info('Settings loaded: isDemoMode=$_isDemoMode, isLoggedIn=$_isLoggedIn');
+    } catch (e) {
+      _log.warning('Failed to load settings: $e');
+    }
+  }
+
+  Future<void> setMode(bool isDemo) async {
+    _isDemoMode = isDemo;
+
+    // Both modes need backend services running.
+    // Clear stale data before reconnecting to avoid mixing modes.
+    _rawDevices = {};
+    _knownDeviceKeys = {};
+    deviceToggles = {};
+    _devicesEtag = null;
+    _wsService.disconnect();
+    _statusTimer?.cancel();
+    _statusTimer = null;
+
+    _log.info('Switching to ${isDemo ? "DEMO" : "LIVE"} mode: starting services');
+    unawaited(_performFullServiceStart());
+
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kModeKey, isDemo);
+      _log.info('Mode updated to: ${isDemo ? "DEMO" : "LIVE"}');
+    } catch (e) {
+      _log.warning('Failed to save mode: $e');
+    }
+  }
+
+  Future<void> setManualServerUrl(String url) async {
+    _log.info('Setting manual server URL: $url');
+    await ApiLocator.setManualOverride(url);
+    baseUrl = url;
+    
+    // Clear state data before reconnecting to the new server
+    _rawDevices = {};
+    _knownDeviceKeys = {};
+    deviceToggles = {};
+    _devicesEtag = null;
+    
+    // Refresh the auth service with the new base URL if needed
+    _authService = AuthService(baseUrl: baseUrl);
+    
+    // Disconnect existing socket to force reconnect to new IP
+    _wsService.disconnect();
+    
+    _scheduleNotify();
+    
+    // Trigger a full start to validate and fetch data from the new IP
+    await _performFullServiceStart();
   }
 
   Future<void> _checkConnection() async {
@@ -472,19 +667,27 @@ class DashboardController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> fetchDevices() async {
+  Future<void> fetchDevices({int retryCount = 0}) async {
     if (isProcessingGoal || baseUrl.isEmpty) return;
-    if (!kIsWeb && baseUrl.contains('localhost')) return;
+    
+    // Only set isLoading on first attempt
+    if (retryCount == 0) {
+      isLoading = true;
+      notifyListeners();
+    }
+
     try {
       final resp = await _deviceService.fetchDevices(baseUrl, _devicesEtag);
 
       // 304 Not Modified — nothing changed on the server.
       if (resp.statusCode == 304) {
         _log.fine('FETCH_DEVICES: 304 Not Modified, skipping');
+        isLoading = false;
+        notifyListeners();
         return;
       }
 
-      _log.info('FETCH_DEVICES: status=${resp.statusCode}, len=${resp.body.length}');
+      _log.info('FETCH_DEVICES: count=$retryCount status=${resp.statusCode}, len=${resp.body.length}');
       if (resp.statusCode == 200) {
         // Cache ETag for next conditional request.
         final etag = resp.headers['etag'];
@@ -499,20 +702,35 @@ class DashboardController extends ChangeNotifier {
         // Build the canonical set of known device keys.
         _knownDeviceKeys = incoming.keys.toSet();
 
-        // Replace _rawDevices with the authoritative /devices payload, then
-        // prune any stale keys that WebSocket/MQTT may have added.
+        // Replace _rawDevices with the authoritative /devices payload
         _rawDevices = Map<String, dynamic>.from(incoming);
 
-        _log.info('FETCH_DEVICES: success, items=${_rawDevices.length}');
+        final items = _rawDevices.length;
+        _log.info('FETCH_DEVICES: success, items=$items');
+
+        // IF items = 0 and we are early in the boot, wait and retry.
+        // This handles the race where the backend is up but probes haven't 
+        // finished yet.
+        if (items == 0 && retryCount < 3) {
+           _log.info('FETCH_DEVICES: 0 items, retrying in 2.5s (attempt ${retryCount + 1})...');
+           await Future.delayed(Duration(milliseconds: (2500 + (retryCount * 1000))));
+           return fetchDevices(retryCount: retryCount + 1);
+        }
+
         _rawDevices.forEach((key, value) {
           if (!(isToggleLoading[key] ?? false)) _syncToggle(key, value);
         });
-        statusMessage =
-            'Updated at ${DateTime.now().toString().substring(11, 19)}';
-        notifyListeners();
+        
+        statusMessage = 'Updated at ${DateTime.now().toString().substring(11, 19)}';
+        if (items == 0 && retryCount >= 3) {
+          statusMessage = 'No devices found after retries.';
+        }
       }
     } catch (e) {
       _log.warning('Failed to fetch devices: $e');
+    } finally {
+      isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -544,6 +762,88 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
+  Future<void> fetchEnergyData({int days = 1}) async {
+    if (baseUrl.isEmpty) return;
+    isHistoryLoading = true;
+    currentHistoryDays = days;
+    notifyListeners();
+    try {
+      final resp = await _deviceService.fetchEnergyHistory(baseUrl, days: days);
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body);
+        energyHistory = List<Map<String, dynamic>>.from(data['history'] ?? []);
+      }
+      
+      final resp2 = await _deviceService.fetchDeviceBreakdown(baseUrl, days: days);
+      if (resp2.statusCode == 200) {
+        final data2 = json.decode(resp2.body);
+        energyBreakdown = List<Map<String, dynamic>>.from(data2['breakdown'] ?? []);
+      }
+      _log.info('Fetched ${energyHistory.length} history points, ${energyBreakdown.length} breakdown items');
+    } catch (e) {
+      _log.warning('Failed to fetch energy data: $e');
+    } finally {
+      isHistoryLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchRules() async {
+    if (baseUrl.isEmpty) return;
+    isRulesLoading = true;
+    notifyListeners();
+    try {
+      final key = _token ?? '';
+      final resp = await http.get(
+        Uri.parse('$baseUrl/rules').replace(queryParameters: {'api_key': key}),
+        headers: {'Content-Type': 'application/json'},
+      );
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body);
+        rules = List<Map<String, dynamic>>.from(data['rules'] ?? []);
+      }
+    } catch (e) {
+      _log.warning('Failed to fetch rules: $e');
+    } finally {
+      isRulesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> saveRule(Map<String, dynamic> ruleData) async {
+    if (baseUrl.isEmpty) return false;
+    try {
+      final resp = await http.post(
+        Uri.parse('$baseUrl/rules'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(ruleData),
+      );
+      if (resp.statusCode == 200) {
+        await fetchRules();
+        return true;
+      }
+    } catch (e) {
+      _log.warning('Failed to save rule: $e');
+    }
+    return false;
+  }
+
+  Future<bool> deleteRule(int ruleId) async {
+    if (baseUrl.isEmpty) return false;
+    try {
+      final resp = await http.delete(
+        Uri.parse('$baseUrl/rules/$ruleId'),
+      );
+      if (resp.statusCode == 200) {
+        await fetchRules();
+        return true;
+      }
+    } catch (e) {
+      _log.warning('Failed to delete rule: $e');
+    }
+    return false;
+  }
+
   Future<void> sendGoal(String message) async {
     isProcessingGoal = true;
     statusMessage = 'AI is thinking...';
@@ -551,7 +851,7 @@ class DashboardController extends ChangeNotifier {
     try {
       final url = await ApiLocator.getBaseUrl();
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('homegenie_api_token') ?? '';
+      final token = prefs.getString(_kTokenKey) ?? '';
       final resp = await _aiService.sendGoal(url, message, token);
 
       if (resp.statusCode < 300) {
@@ -602,11 +902,38 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
+  Future<void> fetchIntegrations() async {
+    if (baseUrl.isEmpty) return;
+    isIntegrationsLoading = true;
+    _scheduleNotify();
+    try {
+      integrations = await _integrationService.fetchIntegrations(baseUrl);
+    } catch (e) {
+      _log.warning('Failed to fetch integrations: $e');
+      // Fall back to default scaffold list
+      integrations = PlatformIntegration.defaults();
+    } finally {
+      isIntegrationsLoading = false;
+      _scheduleNotify();
+    }
+  }
+
+  Future<bool> setupIntegration(String platformId, Map<String, dynamic> config) async {
+    if (baseUrl.isEmpty) return false;
+    try {
+      final success = await _integrationService.setupPlatform(baseUrl, platformId, config);
+      if (success) await fetchIntegrations();
+      return success;
+    } catch (e) {
+      _log.warning('Failed to setup integration $platformId: $e');
+      return false;
+    }
+  }
+
   @override
   void dispose() {
     _statusTimer?.cancel();
     _wsService.dispose();
-    _mqttService?.dispose();
     super.dispose();
   }
 }

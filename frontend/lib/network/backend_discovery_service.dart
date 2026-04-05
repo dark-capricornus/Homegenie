@@ -10,6 +10,7 @@ final Logger _log = Logger('BackendDiscoveryService');
 class BackendDiscoveryService {
   static const String _kCachedKey = 'cached_server_url';
   static const String _kOverrideKey = 'server_override_url';
+  static const String _kLastHostKey = 'last_successful_host';
   /// Key for user-configured LAN IP (stored in SharedPreferences).
   static const String _kLanIpKey = 'backend_lan_ip';
   static const List<int> _kCandidatePorts = [8080, 8081, 8000];
@@ -69,7 +70,8 @@ class BackendDiscoveryService {
 
     // 3. Platform Specific & LAN Scan
     final lanIp = prefs.getString(_kLanIpKey);
-    final candidates = _generateCandidates(lanIp: lanIp);
+    final lastHost = prefs.getString(_kLastHostKey);
+    final candidates = _generateCandidates(lanIp: lanIp, lastHost: lastHost);
     _log.info(
         'Starting parallel discovery for ${candidates.length} candidates...');
 
@@ -106,6 +108,15 @@ class BackendDiscoveryService {
         final data = json.decode(response.body);
         if (data is Map<String, dynamic> && data['status'] == 'ok') {
           _log.info('SUCCESS: $probeUrl responded correctly.');
+          
+          // Success! Persist only the HOST for future discovery cycles.
+          // This allows us to re-probe the IP even if the port changes later.
+          final uri = Uri.parse(cleanUrl);
+          final host = uri.host;
+          if (host.isNotEmpty && host != 'localhost' && host != '127.0.0.1') {
+             SharedPreferences.getInstance().then((p) => p.setString(_kLastHostKey, host));
+          }
+          
           return true;
         } else {
           _log.warning('FAILURE: $probeUrl returned 200 but invalid schema.');
@@ -166,7 +177,7 @@ class BackendDiscoveryService {
 
   /// Generate candidates based on platform and user-configured LAN IP.
   /// No hardcoded developer IPs or tunnels — all configurable via SharedPreferences.
-  List<String> _generateCandidates({String? lanIp}) {
+  List<String> _generateCandidates({String? lanIp, String? lastHost}) {
     final hosts = <String>[];
 
     bool isDev = !kReleaseMode;
@@ -182,6 +193,9 @@ class BackendDiscoveryService {
       // Add user-configured LAN IP first (highest priority after cached/override)
       if (lanIp != null && lanIp.isNotEmpty) {
         hosts.add(lanIp);
+      }
+      if (lastHost != null && lastHost.isNotEmpty) {
+        hosts.add(lastHost);
       }
       hosts.add('localhost');
       hosts.add('127.0.0.1');

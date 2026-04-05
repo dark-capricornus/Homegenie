@@ -12,7 +12,13 @@ class WebSocketService {
   WebSocketChannel? _channel;
   final _controller = StreamController<Map<String, dynamic>>.broadcast();
   bool _isConnected = false;
+  bool _isManuallyStopped = false; // Add manual stop flag
   Timer? _reconnectTimer;
+  int _retryDelaySeconds = 2;
+  static const int _maxRetryDelay = 60;
+  
+  final _connectionStateController = StreamController<bool>.broadcast();
+  Stream<bool> get connectionStateStream => _connectionStateController.stream;
 
   /// Key for persisted API token in SharedPreferences.
   static const String _kTokenKey = 'homegenie_api_token';
@@ -30,15 +36,32 @@ class WebSocketService {
   String? _baseUrlOverride;
 
   Future<void> connect({String? baseUrl}) async {
-    if (_isConnected) return;
+    _isManuallyStopped = false; // Reset on manual connect
+    
+    // If a specific baseUrl is provided and it differs from our current connection,
+    // we must disconnect first to ensure we target the right backend.
+    if (baseUrl != null && _baseUrlOverride != null && baseUrl != _baseUrlOverride) {
+      _log.info('WebSocket: URL changed from $_baseUrlOverride to $baseUrl. Reconnecting...');
+      disconnect();
+    }
 
-    // Use provided baseUrl, or the previously resolved one, or discover fresh.
-    final resolved = baseUrl ?? _baseUrlOverride ?? await ApiLocator.getBaseUrl();
-    if (resolved.isEmpty) {
-      _log.warning('Cannot connect to WebSocket: Base URL is empty');
-      _scheduleReconnect();
+    if (_isConnected) {
+      _log.fine('WebSocket: Already connected to $_baseUrlOverride');
       return;
     }
+
+    // Use provided baseUrl, or the previously resolved one, or discover fresh.
+    var resolved = baseUrl ?? _baseUrlOverride ?? await ApiLocator.getBaseUrl();
+    
+    // If we're stuck on localhost but it's failing, try to rediscover fresh 
+    // to see if the network/server is back.
+    if (resolved.contains('localhost') && baseUrl == null) {
+      final fresh = await ApiLocator.getBaseUrl();
+      if (!fresh.contains('localhost')) {
+        resolved = fresh;
+      }
+    }
+    
     _baseUrlOverride = resolved;
     final String effectiveBaseUrl = resolved;
 
@@ -53,6 +76,9 @@ class WebSocketService {
     try {
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
       _isConnected = true;
+      _retryDelaySeconds = 2; // Reset on success
+      _connectionStateController.add(true);
+      _log.info('WebSocket connected successfully to $wsUrl');
 
       _channel!.stream.listen(
         (message) {
@@ -66,31 +92,37 @@ class WebSocketService {
         onDone: () {
           _log.info('WebSocket connection closed for $wsUrl');
           _isConnected = false;
+          _connectionStateController.add(false);
           _scheduleReconnect();
         },
         onError: (error) {
           _log.warning(
               'WebSocket error for $wsUrl: $error. Ensure backend is running and CORS allows this IP.');
           _isConnected = false;
+          _connectionStateController.add(false);
           _scheduleReconnect();
         },
       );
     } catch (e) {
       _log.warning('Failed to connect to WebSocket at $wsUrl: $e');
       _isConnected = false;
+      _connectionStateController.add(false);
       _scheduleReconnect();
     }
   }
 
   void _scheduleReconnect() {
+    if (_isManuallyStopped) return; // Prevent automatic reconnect if manually stopped
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 5), () {
-      _log.info('Attempting to reconnect to WebSocket...');
+    _reconnectTimer = Timer(Duration(seconds: _retryDelaySeconds), () {
+      _log.info('Attempting to reconnect to WebSocket in $_retryDelaySeconds seconds (exponential backoff)...');
+      _retryDelaySeconds = (_retryDelaySeconds * 2).clamp(2, _maxRetryDelay);
       connect();
     });
   }
 
   void disconnect() {
+    _isManuallyStopped = true; // Set manual stop flag
     _reconnectTimer?.cancel();
     _channel?.sink.close();
     _isConnected = false;

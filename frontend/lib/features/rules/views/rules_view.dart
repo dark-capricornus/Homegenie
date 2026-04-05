@@ -83,58 +83,51 @@ class RulesPage extends StatefulWidget {
 class _RulesPageState extends State<RulesPage> {
   final List<AutomationRule> _rules = _mockRules();
 
-  Color get _bg =>
-      widget.isDark ? AppColors.darkBackground : AppColors.lightBackground;
-  Color get _surface =>
-      widget.isDark ? AppColors.darkSurface : AppColors.lightSurface;
-  Color get _border =>
-      widget.isDark ? AppColors.darkBorder : AppColors.lightBorder;
   Color get _textPrimary =>
       widget.isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
-  Color get _textSecondary => widget.isDark
-      ? AppColors.darkTextSecondary
-      : AppColors.lightTextSecondary;
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      _buildHeader(context),
-      Expanded(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-          children: [
-            Row(children: [
-              Text('Active Insights',
-                  style: TextStyle(
-                      color: _textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16)),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const AdvancedRuleBuilderView()),
-                ),
-                icon: const Icon(Icons.add, size: 14, color: AppColors.primary),
-                label: const Text('New Rule',
-                    style: TextStyle(color: AppColors.primary, fontSize: 12)),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            ..._rules.map((rule) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: RuleCard(
-                    rule: rule,
-                    isDark: widget.isDark,
-                    onToggle: (v) => setState(() => rule.isActive = v),
-                    onTap: () {},
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
+      children: [
+        _buildHeader(context),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            children: [
+              Row(children: [
+                Text('Active Insights',
+                    style: TextStyle(
+                        color: _textPrimary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16)),
+                const Spacer(),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const AdvancedRuleBuilderView()),
                   ),
-                )),
-          ],
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('New Rule'),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              ..._rules.map((rule) => Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: RuleCard(
+                      rule: rule,
+                      isDark: widget.isDark,
+                      onToggle: (v) => setState(() => rule.isActive = v),
+                      onTap: () {},
+                    ),
+                  )),
+            ],
+          ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -162,7 +155,6 @@ class RuleCard extends StatelessWidget {
       required this.onToggle,
       required this.onTap});
 
-  Color get _surface => isDark ? AppColors.darkSurface : AppColors.lightSurface;
   Color get _border => isDark ? AppColors.darkBorder : AppColors.lightBorder;
   Color get _textPrimary =>
       isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
@@ -171,12 +163,9 @@ class RuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: Border.all(color: _border),
-      ),
+    return AppSurface(
+      isDark: isDark,
+      padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Room image placeholder
         Container(
@@ -232,13 +221,11 @@ class RuleCard extends StatelessWidget {
                     Border.all(color: rule.triggerColor.withValues(alpha: 0.2)),
               ),
               child: Row(children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                      color: rule.triggerColor,
-                      borderRadius: BorderRadius.circular(8)),
-                  child: Icon(rule.triggerIcon, color: Colors.white, size: 16),
+                IconBox(
+                  icon: rule.triggerIcon,
+                  color: rule.triggerColor,
+                  size: 32,
+                  iconSize: 16,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -275,13 +262,11 @@ class RuleCard extends StatelessWidget {
                     Border.all(color: rule.actionColor.withValues(alpha: 0.2)),
               ),
               child: Row(children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                      color: rule.actionColor,
-                      borderRadius: BorderRadius.circular(8)),
-                  child: Icon(rule.actionIcon, color: Colors.white, size: 16),
+                IconBox(
+                  icon: rule.actionIcon,
+                  color: rule.actionColor,
+                  size: 32,
+                  iconSize: 16,
                 ),
                 const SizedBox(width: 10),
                 Expanded(

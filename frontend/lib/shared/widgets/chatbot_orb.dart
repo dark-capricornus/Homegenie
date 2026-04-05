@@ -54,10 +54,17 @@ class _ChatbotOrbState extends State<ChatbotOrb>
   Future<void> _startRecording() async {
     _recorder = AudioRecorder();
     if (await _recorder!.hasPermission()) {
+      final String extension = Platform.isIOS ? 'm4a' : 'aac';
       final filePath =
-          '${Directory.systemTemp.path}/hg_chat_${DateTime.now().millisecondsSinceEpoch}.opus';
-      await _recorder!
-          .start(const RecordConfig(encoder: AudioEncoder.opus), path: filePath);
+          '${Directory.systemTemp.path}/hg_chat_${DateTime.now().millisecondsSinceEpoch}.$extension';
+      await _recorder!.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          sampleRate: 16000,
+          bitRate: 32000,
+        ),
+        path: filePath,
+      );
       HapticFeedback.mediumImpact();
       setState(() => _isRecording = true);
     }
@@ -71,7 +78,8 @@ class _ChatbotOrbState extends State<ChatbotOrb>
     HapticFeedback.lightImpact();
     if (path != null && mounted) {
       final bytes = await File(path).readAsBytes();
-      await ctrl.sendVoiceAudio(bytes.toList(), 'audio.opus');
+      final String extension = Platform.isIOS ? 'm4a' : 'aac';
+      await ctrl.sendVoiceAudio(bytes.toList(), 'audio.$extension');
       try {
         await File(path).delete();
       } catch (_) {}

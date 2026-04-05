@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'package:homegenie_app/core/theme/app_theme.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
+import 'package:homegenie_app/features/live/widgets/live_mode_placeholder.dart';
 import 'package:homegenie_app/shared/widgets/shared_widgets.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -78,42 +79,19 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
       ? AppColors.darkTextSecondary
       : AppColors.lightTextSecondary;
 
-  // Mock chart data per period
-  List<FlSpot> get _chartSpots {
+  // Real chart data from controller or live spots
+  List<FlSpot> _getChartSpots(DashboardController ctrl) {
     if (_periodIndex == 0) {
-      return _liveSpots.isEmpty ? [const FlSpot(0, 0)] : _liveSpots;
+      return _liveSpots.isEmpty ? [const FlSpot(0, 0)] : List.from(_liveSpots);
     }
-    switch (_periodIndex) {
-      case 1:
-        return [
-          const FlSpot(0, 18.4),
-          const FlSpot(1, 22.1),
-          const FlSpot(2, 19.5),
-          const FlSpot(3, 24.5),
-          const FlSpot(4, 21.2),
-          const FlSpot(5, 25.8),
-          const FlSpot(6, 20.3),
-        ];
-      default:
-        return [
-          const FlSpot(0, 180),
-          const FlSpot(5, 215),
-          const FlSpot(10, 195),
-          const FlSpot(15, 240),
-          const FlSpot(20, 210),
-          const FlSpot(25, 225),
-          const FlSpot(30, 200),
-        ];
-    }
+    
+    if (ctrl.energyHistory.isEmpty) return [const FlSpot(0, 0)];
+    
+    return ctrl.energyHistory.asMap().entries.map((e) {
+      final value = (e.value['avg_watts'] ?? 0.0).toDouble();
+      return FlSpot(e.key.toDouble(), value);
+    }).toList();
   }
-
-  String _formatKwh(DashboardController ctrl) {
-    if (_periodIndex == 0) return ctrl.totalPowerConsumption.toStringAsFixed(1);
-    return ['24.5', '156.3', '742'][_periodIndex];
-  }
-
-  String get _trend => ['+10%', '-8%', '+5%'][_periodIndex];
-  bool get _isPositiveTrend => [true, false, true][_periodIndex];
 
   final List<Map<String, dynamic>> _devices = [
     {
@@ -145,9 +123,60 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
     },
   ];
 
+  String _formatKwh(DashboardController ctrl) {
+    if (_periodIndex == 0) return ctrl.totalPowerConsumption.toStringAsFixed(1);
+    
+    // For historical, show the sum of avg watts normalized to the period?
+    // For now, use a simplified estimate from history
+    if (ctrl.energyHistory.isEmpty) return '0.0';
+    double total = 0;
+    for (var h in ctrl.energyHistory) {
+      total += (h['avg_watts'] ?? 0.0).toDouble();
+    }
+    // Simple Watts -> kWh conversion (assuming hourly samples)
+    return (total / 1000).toStringAsFixed(1);
+  }
+
+  String get _trend => ['+10%', '-8%', '+5%'][_periodIndex];
+  bool get _isPositiveTrend => [true, false, true][_periodIndex];
+
+  List<Map<String, dynamic>> _getDevicesData(DashboardController ctrl) {
+    if (_periodIndex == 0 || ctrl.energyBreakdown.isEmpty) return _devices;
+    
+    return ctrl.energyBreakdown.map((d) {
+      final devId = d['device_id'] as String;
+      // Try to find device name from controller
+      String name = devId;
+      try {
+        final devInfo = ctrl.devices.firstWhere((x) => x.key == devId);
+        name = devInfo.name;
+      } catch (_) {}
+
+      return {
+        'name': name,
+        'room': 'Sensor Obs.',
+        'kwh': '${(d['total_watts'] / 1000).toStringAsFixed(2)} kWh',
+        'pct': (d['percentage'] ?? 0.0) / 100.0,
+        'color': AppColors.primary,
+        'icon': Icons.bolt_rounded,
+        'trend': '${d['percentage']}%'
+      };
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<DashboardController>();
+
+    if (!ctrl.isDemoMode) {
+      return LiveModePlaceholder(
+        title: 'Energy Analytics',
+        description: 'Connect your devices in the Live Hub to monitor real-time power consumption and energy trends.',
+        icon: Icons.bolt_rounded,
+        isDark: widget.isDark,
+      );
+    }
+
     return Column(children: [
       _buildHeader(context),
       Expanded(
@@ -167,7 +196,11 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
                 final sel = e.key == _periodIndex;
                 return Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() => _periodIndex = e.key),
+                    onTap: () {
+                      setState(() => _periodIndex = e.key);
+                      if (e.key == 1) ctrl.fetchEnergyData(days: 7);
+                      if (e.key == 2) ctrl.fetchEnergyData(days: 30);
+                    },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -246,7 +279,7 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
                         maxX: _periodIndex == 0 ? _timeCounter : null,
                         lineBarsData: [
                           LineChartBarData(
-                            spots: _chartSpots,
+                            spots: _getChartSpots(ctrl),
                             isCurved: true,
                             color: AppColors.primary,
                             barWidth: 2.5,
@@ -285,7 +318,10 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
               ),
             ]),
             const SizedBox(height: 8),
-            ..._devices.map(
+            if (ctrl.isHistoryLoading && _periodIndex != 0)
+              const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
+            else
+              ..._getDevicesData(ctrl).map(
                 (d) => _DeviceConsumptionRow(data: d, isDark: widget.isDark)),
             const SizedBox(height: 16),
             // Eco Tip

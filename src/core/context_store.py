@@ -11,6 +11,11 @@ import json
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone, timedelta
 
+try:
+    from src.core import db_async as db
+except ImportError:
+    db = None
+
 
 class ContextStore:
     """
@@ -155,7 +160,13 @@ class ContextStore:
             "last_seen": datetime.now(timezone.utc).isoformat()
         })
         
-        # Reconcile: mark commanded as confirmed if match
+        # 1. NEW: Record energy history if power_consumption is present
+        power = state.get("power_consumption")
+        if power is not None and db:
+            # We don't await to avoid slowing down the state update loop
+            asyncio.create_task(db.record_energy_sample(device_id, float(power)))
+
+        # 2. Reconcile: mark commanded as confirmed if match
         cmd_key = f"devices/{device_id}/commanded"
         commanded = await self.async_get_state(cmd_key)
         if commanded and commanded.get("status") == "pending":

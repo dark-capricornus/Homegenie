@@ -55,7 +55,7 @@ class SensorAgent:
     ) -> None:
         # Backward-compatible constructor: callers may pass broker_host/broker_port/topic_pattern
         # or a ContextStore directly. Ensure we always have a ContextStore instance.
-        self.context_store = context_store or ContextStore()
+        self.context_store = context_store if context_store is not None else ContextStore()
         self.on_message_callback = on_message_callback
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         
@@ -122,8 +122,17 @@ class SensorAgent:
                         state=data,
                         last_seen=datetime.now(timezone.utc)
                     )
+                    
+                    # Special Case: Simulation Engine Unpacking
+                    # If the probe returns a dictionary with 'states' or 'total_devices', it's likely a simulator
+                    if isinstance(data, dict) and ('states' in data or 'devices' in data):
+                        sim_devices = data.get('states') or data.get('devices') or {}
+                        if isinstance(sim_devices, dict):
+                            logger.info(f"🔄 Unpacking {len(sim_devices)} devices from simulator probe '{name}'")
+                            for dev_id, dev_state in sim_devices.items():
+                                await self.context_store.async_update_observed_state(dev_id, dev_state)
                 else:
-                    # Fallback for older ContextStore versions (though we just updated it)
+                    # Fallback for older ContextStore versions
                     logger.warning("ContextStore missing async_update_probe_status")
 
                 logger.info(f"✅ Probe success: {name} ({url})")

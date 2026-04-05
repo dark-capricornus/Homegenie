@@ -634,7 +634,7 @@ class EnhancedMemoryAgent:
             return self._analytics_cache[user_id]
         
         history = self._history.get(user_id, [])
-        device_stats = self._device_usage_stats.get(user_id, {})
+        device_stats = self._device_usage.get(user_id, {})
         patterns = self._behavior_patterns.get(user_id, [])
         
         # Calculate analytics
@@ -706,8 +706,8 @@ class EnhancedMemoryAgent:
             del self._behavior_patterns[user_id]
         if user_id in self._preferences:
             del self._preferences[user_id]
-        if user_id in self._device_usage_stats:
-            del self._device_usage_stats[user_id]
+        if user_id in self._device_usage:
+            del self._device_usage[user_id]
         if user_id in self._active_suggestions:
             del self._active_suggestions[user_id]
         if user_id in self._analytics_cache:

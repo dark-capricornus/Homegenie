@@ -72,8 +72,8 @@ class DeviceService {
         .timeout(const Duration(seconds: 10));
   }
 
-  Future<void> toggleDevice(String baseUrl, String deviceKey, String action) async {
-    await http
+  Future<http.Response> toggleDevice(String baseUrl, String deviceKey, String action) async {
+    return await http
         .post(
           Uri.parse('$baseUrl/devices/control'),
           headers: {'Content-Type': 'application/json'},
@@ -83,5 +83,22 @@ class DeviceService {
           }),
         )
         .timeout(const Duration(seconds: 5));
+  }
+
+  Future<http.Response> fetchEnergyHistory(String baseUrl, {String? deviceId, int days = 1}) async {
+    final uri = Uri.parse('$baseUrl/history/energy').replace(
+      queryParameters: {
+        if (deviceId != null) 'device_id': deviceId,
+        'days': days.toString(),
+      },
+    );
+    return await http.get(uri).timeout(const Duration(seconds: 5));
+  }
+
+  Future<http.Response> fetchDeviceBreakdown(String baseUrl, {int days = 1}) async {
+    final uri = Uri.parse('$baseUrl/history/devices').replace(
+      queryParameters: {'days': days.toString()},
+    );
+    return await http.get(uri).timeout(const Duration(seconds: 5));
   }
 }

@@ -29,12 +29,11 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surface = isDark ? AppColors.darkSurface : AppColors.lightSurface;
     final textPrimary =
         isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
 
     return Container(
-      color: surface,
+      color: Colors.transparent,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

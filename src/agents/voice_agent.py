@@ -93,6 +93,8 @@ class VoiceAgent:
         self.wake_word = wake_word
         self.recognition_method = recognition_method
         self.language = language
+        self.vosk_model = None
+        self.porcupine = None
         
         # Initialize speech recognition (if available)
         if SPEECH_RECOGNITION_AVAILABLE and sr is not None:
@@ -136,14 +138,15 @@ class VoiceAgent:
         self.listen_thread: Optional[threading.Thread] = None
         self.command_queue = queue.Queue()
         
+        self.vosk_model = None
+        self.porcupine = None
+        
         # Wake word detection
         if self.enable_wake_word and WAKE_WORD_AVAILABLE:
-            self.porcupine = None
             self._init_wake_word()
         
         # Offline recognition model
         if self.recognition_method == "vosk" and OFFLINE_RECOGNITION_AVAILABLE:
-            self.vosk_model = None
             self._init_vosk()
         
         # Voice command patterns for better processing

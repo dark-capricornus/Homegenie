@@ -4,6 +4,7 @@ import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
 import 'package:homegenie_app/core/models/device.dart';
 import 'package:homegenie_app/shared/widgets/shared_widgets.dart';
 import 'package:homegenie_app/core/responsive/breakpoints.dart';
+import 'package:homegenie_app/features/live/widgets/live_mode_placeholder.dart';
 import 'package:provider/provider.dart';
 
 class IoTDevicesPage extends StatelessWidget {
@@ -14,6 +15,15 @@ class IoTDevicesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl = context.watch<DashboardController>();
     final bg = isDark ? AppColors.darkBackground : AppColors.lightBackground;
+
+    if (!ctrl.isDemoMode) {
+      return LiveModePlaceholder(
+        title: 'Connect Your Devices',
+        description: 'Configure a platform integration in the Live Hub to see your real IoT devices here.',
+        icon: Icons.devices_rounded,
+        isDark: isDark,
+      );
+    }
 
     return Container(
       color: bg,

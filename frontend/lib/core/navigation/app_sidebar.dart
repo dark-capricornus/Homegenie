@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
+import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
 
 class AppSidebar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   final bool isDark;
   final bool isCollapsed;
+  final bool isDemoMode;
   final VoidCallback onToggle;
 
   const AppSidebar({
@@ -15,6 +18,7 @@ class AppSidebar extends StatelessWidget {
     required this.isDark,
     required this.onToggle,
     this.isCollapsed = false,
+    this.isDemoMode = true,
   });
 
   @override
@@ -33,8 +37,9 @@ class AppSidebar extends StatelessWidget {
       ),
       child: Column(
         children: [
+          _buildUserProfile(isDark, isCollapsed, context),
           _buildHeader(isDark, isCollapsed),
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.symmetric(horizontal: isCollapsed ? 8 : 16),
@@ -44,9 +49,9 @@ class AppSidebar extends StatelessWidget {
                 children: [
                   if (!isCollapsed) _SectionLabel('MAIN MENU', isDark),
                   _SidebarItem(
-                    icon: Icons.insights_outlined,
-                    activeIcon: Icons.insights,
-                    label: 'Dashboard',
+                    icon: isDemoMode ? Icons.insights_outlined : Icons.cell_tower_outlined,
+                    activeIcon: isDemoMode ? Icons.insights : Icons.cell_tower,
+                    label: isDemoMode ? 'Dashboard' : 'Live Hub',
                     index: 0,
                     currentIndex: currentIndex,
                     onTap: onTap,
@@ -113,13 +118,12 @@ class AppSidebar extends StatelessWidget {
                     isDark: isDark,
                     isCollapsed: isCollapsed,
                   ),
-                  const SizedBox(height: 40),
+          const SizedBox(height: 40),
                   if (!isCollapsed) _buildSystemStats(isDark),
                 ],
               ),
             ),
           ),
-          _buildUserProfile(isDark, isCollapsed, context),
         ],
       ),
     );
@@ -259,86 +263,129 @@ class AppSidebar extends StatelessWidget {
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
     final border = isDark ? AppColors.darkBorder : AppColors.lightBorder;
 
-    return InkWell(
-      onTap: () {
-        // Show a menu or navigate to profile
-        showModalBottomSheet(
-          context: context,
-          backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          builder: (context) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.person_outline),
-                title: const Text('My Profile'),
-                onTap: () => Navigator.pop(context),
+    return Consumer<DashboardController>(
+      builder: (context, controller, _) {
+        final user = controller.currentUser;
+        final userLabel = user?.username ?? 'Guest User';
+        final userRole = user != null ? 'Authenticated User' : 'Guest';
+
+        return InkWell(
+          onTap: () {
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              ListTile(
-                leading: const Icon(Icons.settings_outlined),
-                title: const Text('Server Settings'),
-                onTap: () {
-                  Navigator.pop(context);
-                  onTap(7); // Index 7 is currently ServerSettingsScreen in RootPage
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.logout, color: AppColors.error),
-                title: const Text('Logout', style: TextStyle(color: AppColors.error)),
-                onTap: () => Navigator.pop(context),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: border)),
-        ),
-        child: Row(
-          mainAxisAlignment:
-              collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
-          children: [
-            const CircleAvatar(
-              radius: 18,
-              backgroundColor: AppColors.primaryDim,
-              child:
-                  Icon(Icons.person_outline, color: AppColors.primary, size: 18),
-            ),
-            if (!collapsed) ...[
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              builder: (context) => Consumer<DashboardController>(
+                builder: (context, controller, _) => Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'Alex Richards',
-                      style: TextStyle(
-                          color: textPrimary,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 12),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                    Text(
-                      'Home Administrator',
-                      style: TextStyle(color: textSecondary, fontSize: 10),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 20),
+                    // Demo Mode Switch
+                    ListTile(
+                      leading: Icon(Icons.bug_report_outlined,
+                          color: controller.isDemoMode ? AppColors.primary : textSecondary),
+                      title: const Text('Demo Mode'),
+                      subtitle: Text(controller.isDemoMode
+                          ? 'Running in simulation mode'
+                          : 'Connected to real hardware'),
+                      trailing: Switch.adaptive(
+                        value: controller.isDemoMode,
+                        onChanged: (val) {
+                          controller.setMode(val);
+                        },
+                        activeTrackColor: AppColors.primary,
+                      ),
                     ),
+                    const Divider(),
+                    if (controller.isLoggedIn) ...[
+                      ListTile(
+                        leading: const Icon(Icons.person_outline),
+                        title: const Text('My Profile'),
+                        onTap: () => Navigator.pop(context),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.settings_outlined),
+                        title: const Text('Server Settings'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          onTap(7);
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
-              Icon(Icons.unfold_more, color: textSecondary, size: 16),
-            ],
-          ],
-        ),
-      ),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 40, 20, 20),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: border)),
+            ),
+            child: Row(
+              mainAxisAlignment:
+                  collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: controller.isLoggedIn ? AppColors.primary : AppColors.primaryDim,
+                  child: Icon(
+                    controller.isLoggedIn ? Icons.person : Icons.person_outline,
+                    color: controller.isLoggedIn ? Colors.white : AppColors.primary,
+                    size: 18,
+                  ),
+                ),
+                if (!collapsed) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          userLabel,
+                          style: TextStyle(
+                              color: textPrimary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          userRole,
+                          style: TextStyle(color: textSecondary, fontSize: 10),
+                          maxLines: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!collapsed && controller.isLoggedIn)
+                    IconButton(
+                      icon: const Icon(Icons.logout, size: 18),
+                      color: AppColors.error.withOpacity(0.7),
+                      onPressed: () => controller.logout(),
+                      tooltip: 'Logout',
+                    )
+                  else if (!collapsed)
+                    Icon(Icons.unfold_more, color: textSecondary, size: 16),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

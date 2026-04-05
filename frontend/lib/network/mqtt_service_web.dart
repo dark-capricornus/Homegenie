@@ -61,18 +61,19 @@ class MqttService {
     final randomSuffix = (now % 10000).toString().padLeft(4, '0');
     final clientId = 'hgWeb${now.toRadixString(36)}$randomSuffix';
 
-    // Unified Proxy Path: If on ngrok or external, use /mqtt through Nginx
+    // Unified Proxy Path: If on ngrok or external, use /ws through Nginx
     // Strip port for proxy path if it's not localhost
     final isLocal = cleanHost == 'localhost' || cleanHost == '127.0.0.1';
     final serverUri = isLocal
-        ? 'ws://$cleanHost:$wsPort/mqtt'
-        : 'wss://$cleanHost/mqtt';
+        ? 'ws://$cleanHost:$wsPort/'
+        : 'wss://$cleanHost/';
     
     _mqttLogWeb.info('Configured MQTT WebSocket URI: $serverUri');
     try {
       final bc = MqttBrowserClient(serverUri, clientId);
       bc.port = isLocal ? wsPort : 443;
       bc.websocketProtocols = ['mqtt'];
+      bc.setProtocolV311();
       bc.logging(on: false);
       try {
         bc.autoReconnect = true;
@@ -152,7 +153,7 @@ class MqttService {
     final now = DateTime.now().millisecondsSinceEpoch;
     final randomSuffix = (now % 10000).toString().padLeft(4, '0');
     final clientId = 'hgTest${now.toRadixString(36)}$randomSuffix';
-    final serverUri = 'ws://$cleanHost:$wsPort/mqtt';
+    final serverUri = 'ws://$cleanHost:$wsPort/';
     const diagTopic = 'home/system/diagnostic';
     const diagPayload = '{"test":"mqtt_ping"}';
 
@@ -160,6 +161,7 @@ class MqttService {
       final bc = MqttBrowserClient(serverUri, clientId);
       bc.port = wsPort;
       bc.websocketProtocols = ['mqtt'];
+      bc.setProtocolV311();
       bc.logging(on: false);
       final connMess =
           MqttConnectMessage().withClientIdentifier(clientId).startClean();

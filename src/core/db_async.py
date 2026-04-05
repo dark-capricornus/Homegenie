@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 import logging
 
-from sqlmodel import SQLModel, Field, select
+from sqlmodel import SQLModel, Field, select, delete
 from sqlalchemy import Column
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.types import JSON as SAJSON
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class Device(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    device_id: str = Field(index=True)
+    device_id: str = Field(index=True, unique=True)
     name: Optional[str] = None
     device_type: Optional[str] = None
     current_state: dict = Field(sa_column=Column(SAJSON), default={})
@@ -59,6 +59,32 @@ class MemoryEntry(SQLModel, table=True):
     key: Optional[str] = None
     value: Optional[dict] = Field(sa_column=Column(SAJSON), default={})
     ts: Optional[datetime] = None
+
+
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str = Field(index=True, unique=True)
+    email: Optional[str] = Field(index=True)
+    hashed_password: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class Integration(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    platform: str = Field(index=True, unique=True)  # google_home, alexa, zigbee, matter, custom_mqtt
+    name: str
+    is_configured: bool = Field(default=False)
+    config: dict = Field(sa_column=Column(SAJSON), default={})
+    device_count: int = Field(default=0)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: Optional[datetime] = None
+
+
+class EnergyHistory(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    device_id: str = Field(index=True)
+    power_watts: float
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), index=True)
 
 
 # Lazily initialized engine/session
@@ -254,6 +280,7 @@ async def save_schedule_job(job: Dict[str, Any]):
     async with async_session() as sess:
         try:
             jid = job.get("id")
+            job_data = job.get("data", job.get("metadata", {}))
             if jid:
                 res = await sess.execute(select(ScheduleJob).where(ScheduleJob.id == jid))
                 sj = res.scalar_one_or_none()
@@ -261,12 +288,12 @@ async def save_schedule_job(job: Dict[str, Any]):
                     sj.name = job.get("name", sj.name)
                     sj.cron = job.get("cron", sj.cron)
                     sj.enabled = job.get("enabled", sj.enabled)
-                    sj.data = job.get("metadata", sj.data)
+                    sj.data = job_data if job_data else sj.data
                 else:
-                    sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), data=job.get("metadata", {}), created_at=datetime.now(timezone.utc))
+                    sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), data=job_data, created_at=datetime.now(timezone.utc))
                     sess.add(sj)
             else:
-                sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), data=job.get("metadata", {}), created_at=datetime.now(timezone.utc))
+                sj = ScheduleJob(name=job.get("name", "unnamed"), cron=job.get("cron"), enabled=job.get("enabled", True), data=job_data, created_at=datetime.now(timezone.utc))
                 sess.add(sj)
             await sess.commit()
             await sess.refresh(sj)
@@ -372,3 +399,163 @@ async def save_rule(rule: Dict[str, Any]):
             await sess.rollback()
             logger.error(f"Failed to save rule: {e}")
             return None
+
+
+async def delete_rule(rule_id: int) -> bool:
+    """Deletes an automation rule by id."""
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return False
+    async with async_session() as sess:
+        try:
+            res = await sess.execute(select(RuleTable).where(RuleTable.id == rule_id))
+            rt = res.scalar_one_or_none()
+            if rt:
+                await sess.execute(delete(RuleTable).where(RuleTable.id == rule_id))
+                await sess.commit()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to delete rule: {e}")
+            await sess.rollback()
+            return False
+
+
+async def get_user_by_username(username: str) -> Optional[User]:
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return None
+    async with async_session() as sess:
+        res = await sess.execute(select(User).where(User.username == username))
+        return res.scalars().first()
+
+
+async def create_user(user: User) -> User:
+    _, async_session = _ensure_db()
+    async with async_session() as sess:
+        try:
+            sess.add(user)
+            await sess.commit()
+            await sess.refresh(user)
+            return user
+        except Exception as e:
+            await sess.rollback()
+            logger.error(f"Failed to create user: {e}")
+            raise
+
+
+async def record_energy_sample(device_id: str, watts: float) -> Optional[int]:
+    """Records a single power consumption reading."""
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return None
+    async with async_session() as sess:
+        try:
+            sample = EnergyHistory(device_id=device_id, power_watts=float(watts))
+            sess.add(sample)
+            await sess.commit()
+            await sess.refresh(sample)
+            return sample.id
+        except Exception:
+            await sess.rollback()
+            # Suppress errors to avoid breaking the core state update loop
+            return None
+
+
+async def get_energy_history(device_id: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
+    """Retrieves power consumption history, optionally filtered by device and time range."""
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return []
+    async with async_session() as sess:
+        try:
+            stmt = select(EnergyHistory)
+            if device_id:
+                stmt = stmt.where(EnergyHistory.device_id == device_id)
+            if start_date:
+                stmt = stmt.where(EnergyHistory.timestamp >= start_date)
+            if end_date:
+                stmt = stmt.where(EnergyHistory.timestamp <= end_date)
+            
+            stmt = stmt.order_by(EnergyHistory.timestamp.asc())
+            res = await sess.execute(stmt)
+            return res.scalars().all()
+        except Exception as e:
+            logger.error(f"Failed to fetch energy history: {e}")
+            return []
+
+
+SUPPORTED_PLATFORMS = [
+    {"platform": "google_home", "name": "Google Home"},
+    {"platform": "alexa", "name": "Amazon Alexa"},
+    {"platform": "zigbee", "name": "Zigbee"},
+    {"platform": "matter", "name": "Matter"},
+    {"platform": "custom_mqtt", "name": "Custom MQTT"},
+]
+
+
+async def list_integrations():
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return [{"platform": p["platform"], "name": p["name"], "is_configured": False, "device_count": 0, "config": {}} for p in SUPPORTED_PLATFORMS]
+    async with async_session() as sess:
+        res = await sess.execute(select(Integration))
+        rows = {r.platform: r for r in res.scalars().all()}
+        result = []
+        for p in SUPPORTED_PLATFORMS:
+            if p["platform"] in rows:
+                r = rows[p["platform"]]
+                result.append({
+                    "platform": r.platform,
+                    "name": r.name,
+                    "is_configured": r.is_configured,
+                    "device_count": r.device_count,
+                    "config": r.config or {},
+                })
+            else:
+                result.append({"platform": p["platform"], "name": p["name"], "is_configured": False, "device_count": 0, "config": {}})
+        return result
+
+
+async def get_integration(platform: str):
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return None
+    async with async_session() as sess:
+        res = await sess.execute(select(Integration).where(Integration.platform == platform))
+        return res.scalars().first()
+
+
+async def upsert_integration(platform: str, config: Dict[str, Any]) -> bool:
+    valid_platforms = {p["platform"] for p in SUPPORTED_PLATFORMS}
+    if platform not in valid_platforms:
+        return False
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return False
+    async with async_session() as sess:
+        try:
+            res = await sess.execute(select(Integration).where(Integration.platform == platform))
+            row = res.scalars().first()
+            now = datetime.now(timezone.utc)
+            name = next((p["name"] for p in SUPPORTED_PLATFORMS if p["platform"] == platform), platform)
+            if row:
+                row.config = config
+                row.is_configured = True
+                row.updated_at = now
+            else:
+                row = Integration(platform=platform, name=name, is_configured=True, config=config, created_at=now)
+                sess.add(row)
+            await sess.commit()
+            return True
+        except Exception as e:
+            await sess.rollback()
+            logger.error(f"Failed to upsert integration {platform}: {e}")
+            return False

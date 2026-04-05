@@ -7,12 +7,14 @@ class AppBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   final bool isDark;
+  final bool isDemoMode;
 
   const AppBottomNav({
     super.key,
     required this.currentIndex,
     required this.onTap,
     required this.isDark,
+    this.isDemoMode = true,
   });
 
   @override
@@ -32,9 +34,9 @@ class AppBottomNav extends StatelessWidget {
           child: Row(
             children: [
               BottomNavItem(
-                  icon: Icons.insights_outlined,
-                  activeIcon: Icons.insights,
-                  label: 'Dashboard',
+                  icon: isDemoMode ? Icons.insights_outlined : Icons.cell_tower_outlined,
+                  activeIcon: isDemoMode ? Icons.insights : Icons.cell_tower,
+                  label: isDemoMode ? 'Dashboard' : 'Live Hub',
                   index: 0,
                   currentIndex: currentIndex,
                   onTap: onTap,
@@ -56,9 +58,9 @@ class AppBottomNav extends StatelessWidget {
                   onTap: onTap,
                   isDark: isDark),
               BottomNavItem(
-                  icon: Icons.developer_board_outlined,
-                  activeIcon: Icons.developer_board,
-                  label: 'Admin',
+                  icon: Icons.person_outline,
+                  activeIcon: Icons.person,
+                  label: 'User',
                   index: 7,
                   currentIndex: currentIndex,
                   onTap: onTap,

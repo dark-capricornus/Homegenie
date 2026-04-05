@@ -8,10 +8,12 @@ import 'package:homegenie_app/features/energy/views/energy_view.dart';
 import 'package:homegenie_app/features/logs/views/logs_view.dart';
 import 'package:homegenie_app/features/dashboard/views/iot_devices_view.dart';
 import 'package:homegenie_app/features/simulation/views/simulation_view.dart';
+import 'package:homegenie_app/core/responsive/breakpoints.dart';
+import 'package:homegenie_app/features/automation/views/automation_selection_view.dart';
+import 'package:homegenie_app/features/live/views/live_hub_view.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
 import 'package:homegenie_app/screens/server_settings.dart';
 import 'package:homegenie_app/shared/widgets/chatbot_orb.dart';
-import 'package:homegenie_app/core/responsive/breakpoints.dart';
 import 'package:logging/logging.dart';
 
 final _log = Logger('RootPage');
@@ -65,24 +67,33 @@ class _RootPageState extends State<RootPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     _log.shout('ROOT_BUILD: index=$_currentIndex');
 
+    final isDemo = context.select<DashboardController, bool>((c) => c.isDemoMode);
+
     final List<Widget> pages = [
-      DashboardPage(
-        isDark: widget.isDark,
-        onToggleTheme: widget.onToggleTheme,
-        navIndex: 0,
-        onNavTap: _onNavTap,
-      ),
+      isDemo
+        ? DashboardPage(
+            isDark: widget.isDark,
+            onToggleTheme: widget.onToggleTheme,
+            navIndex: 0,
+            onNavTap: _onNavTap,
+          )
+        : LiveHubView(
+            isDark: widget.isDark,
+            onToggleTheme: widget.onToggleTheme,
+          ),
       IoTDevicesPage(isDark: widget.isDark),
       RulesPage(isDark: widget.isDark),
-      SimulationPage(
-        isDark: widget.isDark,
-        navIndex: 3,
-        onNavTap: _onNavTap,
-      ),
+      isDemo
+        ? SimulationPage(
+            isDark: widget.isDark,
+            navIndex: 3,
+            onNavTap: _onNavTap,
+          )
+        : const AutomationSelectionView(),
       EnergyPage(isDark: widget.isDark),
       AlertsPage(isDark: widget.isDark),
       LogsPage(isDark: widget.isDark),
-      const ServerSettingsScreen(),
+      ServerSettingsScreen(isDark: widget.isDark, onToggleTheme: widget.onToggleTheme),
     ];
 
     // Handle Android back button: go to dashboard first, then exit

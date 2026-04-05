@@ -5,6 +5,10 @@ import 'package:provider/provider.dart';
 import 'package:homegenie_app/core/theme/app_theme.dart';
 import 'package:homegenie_app/features/root/root_page.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
+import 'package:homegenie_app/features/onboarding/onboarding_view.dart';
+import 'package:homegenie_app/features/auth/views/auth_view.dart';
+
+final appLog = Logger('HomeGenieApp');
 
 void main() {
   Logger.root.level = Level.ALL; 
@@ -45,9 +49,44 @@ class _HomeGenieAppState extends State<HomeGenieApp> {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: _isDark ? ThemeMode.dark : ThemeMode.light,
-      home: RootPage(
-        isDark: _isDark,
-        onToggleTheme: () => setState(() => _isDark = !_isDark),
+      home: Selector<DashboardController, (bool, bool, bool)>(
+        selector: (context, controller) => (
+          controller.isLoading,
+          controller.hasModeSet,
+          controller.isLoggedIn,
+        ),
+        builder: (context, data, child) {
+          final isLoading = data.$1;
+          final hasModeSet = data.$2;
+          final isLoggedIn = data.$3;
+
+          appLog.info('ROOT_BUILD: isLoading=$isLoading, hasModeSet=$hasModeSet, isLoggedIn=$isLoggedIn');
+
+          if (isLoading && !hasModeSet) {
+            return const Scaffold(
+              backgroundColor: Color(0xFF0F1115),
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+
+          if (!hasModeSet) {
+            return OnboardingPage(
+              isDark: _isDark,
+              onToggleTheme: () => setState(() => _isDark = !_isDark),
+            );
+          }
+          
+          if (!isLoggedIn) {
+            return const AuthView();
+          }
+
+          return RootPage(
+            isDark: _isDark,
+            onToggleTheme: () => setState(() => _isDark = !_isDark),
+          );
+        },
       ),
     );
   }

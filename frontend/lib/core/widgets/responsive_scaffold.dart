@@ -4,6 +4,8 @@ import 'package:homegenie_app/core/responsive/breakpoints.dart';
 import 'package:homegenie_app/core/navigation/app_bottom_nav.dart';
 import 'package:homegenie_app/core/navigation/app_sidebar.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
+import 'package:provider/provider.dart';
+import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
 import 'package:logging/logging.dart';
 
 final _log = Logger('ResponsiveScaffold');
@@ -44,6 +46,8 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
     if (kDebugMode) {
        _log.shout('SCAFFOLD_BUILD: isCollapsed=$_isCollapsed, index=${widget.currentIndex}');
     }
+    final isDemoMode = context.select<DashboardController, bool>((c) => c.isDemoMode);
+
     return ResponsiveBuilder(
       builder: (context, size) {
         if (size.isMobile) {
@@ -55,6 +59,7 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
               currentIndex: widget.currentIndex,
               onTap: widget.onNavTap,
               isDark: widget.isDark,
+              isDemoMode: isDemoMode,
             ),
             floatingActionButton: widget.floatingActionButton,
           );
@@ -81,11 +86,7 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
                           }
                         },
                         behavior: HitTestBehavior.opaque,
-                        child: Stack(
-                          children: [
-                             Positioned.fill(child: widget.body),
-                          ],
-                        ),
+                        child: widget.body,
                       ),
                     ),
                   ],
@@ -102,6 +103,7 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
                 },
                 isDark: widget.isDark,
                 isCollapsed: _isCollapsed,
+                isDemoMode: isDemoMode,
               ),
 
               if (widget.floatingActionButton != null)

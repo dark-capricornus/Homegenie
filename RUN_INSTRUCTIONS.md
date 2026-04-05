@@ -166,6 +166,11 @@ set POSTGRES_URL=postgresql+psycopg://homegenie:changeme@localhost:5432/homegeni
 alembic upgrade head
 ```
 
+The latest migration `8c3f2b1d0e95` adds:
+- `energyhistory`: Time-series power consumption data.
+- `ruletable`: Persistent automation rules for the Routine Builder.
+- `device`: Enhanced device state and intent tracking.
+
 Alembic config uses `src/core/db_v2`/SQLModel models. If you run migrations inside Docker, ensure `POSTGRES_URL` matches the container networking.
 
 ## 5) Device simulator & MQTT
@@ -181,6 +186,8 @@ Then run the simulator (from repo root):
 ```cmd
 python -m src.simulators.device_simulator
 ```
+
+To verify energy history recording, ensure the simulator is running; it will automatically publish `power_consumption` telemetry which the backend now records to the database.
 
 Note: The executor publishes commands to `home/{device_type}/{location}/command`; the simulator subscribes to matching topics.
 
@@ -198,6 +205,17 @@ set SNAPSHOT_INTERVAL_SECONDS=300
 ```
 
 Then start the API so the snapshot loop runs as part of the FastAPI lifespan.
+
+## 7) Using the Visual Routine Builder
+
+The **Visual Routine Builder** allows you to create "If-Then" automation rules without writing code.
+
+1.  Start the full stack or the dev backend.
+2.  Open the frontend (default port `3000`).
+3.  Navigate to **Automation** from the sidebar.
+4.  Select **Visual Routine Builder** (the featured hero card).
+5.  Define your trigger (e.g., "When Living Room AC power_consumption > 500") and action (e.g., "Turn off Kitchen Light").
+6.  Click **Save**. The rule is now persisted in the database and the `AutomationAgent` will monitor the state for matching conditions.
 
 ## 7) Useful commands & troubleshooting
 
