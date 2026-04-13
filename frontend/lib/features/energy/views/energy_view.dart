@@ -93,35 +93,40 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
     }).toList();
   }
 
-  final List<Map<String, dynamic>> _devices = [
-    {
-      'name': 'Air Conditioner',
-      'room': 'Living Room · Always On',
-      'kwh': '8.2 kWh',
-      'pct': 0.34,
-      'color': AppColors.primary,
-      'icon': Icons.ac_unit,
-      'trend': '+4%'
-    },
-    {
-      'name': 'Refrigerator',
-      'room': 'Kitchen · Standby',
-      'kwh': '4.1 kWh',
-      'pct': 0.17,
-      'color': Colors.orange,
-      'icon': Icons.kitchen,
-      'trend': '-2%'
-    },
-    {
-      'name': 'Entertainment Hub',
-      'room': 'Bedroom · Standby',
-      'kwh': '2.8 kWh',
-      'pct': 0.12,
-      'color': AppColors.purple,
-      'icon': Icons.tv,
-      'trend': 'Same'
-    },
-  ];
+  static const _deviceColors = [AppColors.primary, Colors.orange, AppColors.purple, AppColors.success, AppColors.warning];
+
+  List<Map<String, dynamic>> _buildLiveDeviceBreakdown(DashboardController ctrl) {
+    final totalPower = ctrl.totalPowerConsumption;
+    if (totalPower <= 0) return [];
+
+    final active = ctrl.devices.where((d) => d.isOn && d.powerConsumption > 0).toList()
+      ..sort((a, b) => b.powerConsumption.compareTo(a.powerConsumption));
+
+    return active.take(5).toList().asMap().entries.map((e) {
+      final d = e.value;
+      final pct = d.powerConsumption / totalPower;
+      return {
+        'name': d.name,
+        'room': d.isOn ? 'Active' : 'Off',
+        'kwh': '${d.powerConsumption.toStringAsFixed(1)} W',
+        'pct': pct,
+        'color': _deviceColors[e.key % _deviceColors.length],
+        'icon': _iconForType(d.type),
+        'trend': '${(pct * 100).toStringAsFixed(0)}%',
+      };
+    }).toList();
+  }
+
+  static IconData _iconForType(String type) {
+    switch (type) {
+      case 'light': return Icons.lightbulb_outline;
+      case 'thermostat': return Icons.thermostat;
+      case 'switch': return Icons.power;
+      case 'lock': return Icons.lock_outline;
+      case 'sensor': return Icons.sensors;
+      default: return Icons.bolt_rounded;
+    }
+  }
 
   String _formatKwh(DashboardController ctrl) {
     if (_periodIndex == 0) return ctrl.totalPowerConsumption.toStringAsFixed(1);
@@ -137,11 +142,22 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
     return (total / 1000).toStringAsFixed(1);
   }
 
-  String get _trend => ['+10%', '-8%', '+5%'][_periodIndex];
-  bool get _isPositiveTrend => [true, false, true][_periodIndex];
+  String _trend(DashboardController ctrl) {
+    if (_periodIndex == 0) return 'Live';
+    if (ctrl.energyHistory.length < 2) return '--';
+    final recent = ctrl.energyHistory.last['avg_watts'] ?? 0.0;
+    final older = ctrl.energyHistory.first['avg_watts'] ?? 0.0;
+    if (older == 0) return '--';
+    final pctChange = ((recent - older) / older * 100).round();
+    return '${pctChange >= 0 ? '+' : ''}$pctChange%';
+  }
+  bool _isPositiveTrend(DashboardController ctrl) {
+    final t = _trend(ctrl);
+    return t.startsWith('+') || t == 'Live';
+  }
 
   List<Map<String, dynamic>> _getDevicesData(DashboardController ctrl) {
-    if (_periodIndex == 0 || ctrl.energyBreakdown.isEmpty) return _devices;
+    if (_periodIndex == 0 || ctrl.energyBreakdown.isEmpty) return _buildLiveDeviceBreakdown(ctrl);
     
     return ctrl.energyBreakdown.map((d) {
       final devId = d['device_id'] as String;
@@ -251,11 +267,11 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: AppBadge(
-                          label: _trend,
-                          backgroundColor: _isPositiveTrend
+                          label: _trend(ctrl),
+                          backgroundColor: _isPositiveTrend(ctrl)
                               ? AppColors.successDim
                               : AppColors.warningDim,
-                          textColor: _isPositiveTrend
+                          textColor: _isPositiveTrend(ctrl)
                               ? AppColors.success
                               : AppColors.warning,
                         ),
@@ -312,9 +328,9 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
                       fontSize: 15)),
               const Spacer(),
               TextButton(
-                onPressed: () {},
-                child: const Text('View All',
-                    style: TextStyle(color: AppColors.primary, fontSize: 12)),
+                onPressed: null,
+                child: Text('View All',
+                    style: TextStyle(color: AppColors.primary.withValues(alpha: 0.4), fontSize: 12)),
               ),
             ]),
             const SizedBox(height: 8),
@@ -372,8 +388,9 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
       isDark: widget.isDark,
       actions: [
         IconButton(
-            icon: Icon(Icons.share_outlined, color: _textSecondary),
-            onPressed: () {}),
+            icon: Icon(Icons.share_outlined, color: _textSecondary.withValues(alpha: 0.4)),
+            onPressed: null,
+            tooltip: 'Export coming soon'),
       ],
     );
   }

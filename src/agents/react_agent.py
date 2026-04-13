@@ -26,8 +26,8 @@ from src.agents.conversation import ConversationManager
 
 logger = logging.getLogger(__name__)
 
-MAX_ITERATIONS = 6
-AGENT_TIMEOUT = float(os.getenv("AGENT_TIMEOUT", "90.0"))
+MAX_ITERATIONS = int(os.getenv("AGENT_MAX_ITERATIONS", "3"))
+AGENT_TIMEOUT = float(os.getenv("AGENT_TIMEOUT", "60.0"))
 
 
 def _build_system_prompt(
@@ -65,6 +65,8 @@ If the user's request is ambiguous (e.g. "the light" when multiple exist):
 ## Rules
 - When the user says "it", "that", "the same one", refer to the conversation context for the last-mentioned device.
 - For composite goals like "goodnight" or "movie time", decompose into multiple tool calls — you will get multiple turns.
+- When the user says "all devices in <room>", "everything in <room>", "all lights", or similar batch commands, use the **batch_control** tool with room/type filters instead of multiple control_device calls. This is much faster.
+- You can use the "exclude" parameter in batch_control to skip specific devices (e.g. "turn off everything in kitchen except the thermostat").
 - After each tool call you'll see the result. Decide if you need another action or can respond.
 - Always use device IDs from the device list (e.g. "light.living_room"), not free-form names.
 - If a device_id is ambiguous (multiple matches), use ask_clarification.
@@ -183,6 +185,14 @@ class ReActAgent:
             response = "Done — " + ", ".join(responses) + "." if responses else "Done."
             self.conversation.add_message(user_id, "assistant", response)
             return {"response": response, "actions_taken": actions, "iterations": 0}
+
+        # If LLM is disabled, don't attempt the expensive LLM loop
+        llm_enabled = os.getenv("LLM_ENABLED", "false").lower() in ("1", "true", "yes")
+        if not llm_enabled:
+            logger.info("LLM disabled — fast-match didn't fire, returning fallback")
+            fallback = "Sorry, I couldn't understand that command. Try something like 'turn off kitchen light' or 'turn off all lights in bedroom'."
+            self.conversation.add_message(user_id, "assistant", fallback)
+            return {"response": fallback, "actions_taken": [], "iterations": 0}
 
         # Build context
         conv_context = self.conversation.build_context_block(user_id)
@@ -469,6 +479,28 @@ class ReActAgent:
                 best_device = did
         return best_device, best_score
 
+    # Patterns for "all/every/everything" batch commands
+    _BATCH_PATTERNS = [
+        # "turn off all devices in kitchen", "turn on everything in the bedroom"
+        re.compile(
+            r"\b(turn\s+on|turn\s+off|switch\s+on|switch\s+off|toggle|disable|enable)"
+            r"\b.*\b(all|every|everything)\b.*\b(?:in\s+(?:the\s+)?)?(\w+)",
+            re.I,
+        ),
+        # "turn off all kitchen lights", "switch on all bedroom devices"
+        re.compile(
+            r"\b(turn\s+on|turn\s+off|switch\s+on|switch\s+off|toggle|disable|enable)"
+            r"\b.*\b(all|every)\s+(\w+)\s*(\w*)",
+            re.I,
+        ),
+    ]
+
+    _BATCH_ACTION_MAP = {
+        "turn on": "turn_on", "switch on": "turn_on", "enable": "turn_on",
+        "turn off": "turn_off", "switch off": "turn_off", "disable": "turn_off",
+        "toggle": "toggle",
+    }
+
     def _try_fast_match(
         self, message: str, device_list: List[str]
     ) -> Optional[Any]:
@@ -482,6 +514,11 @@ class ReActAgent:
         scene_result = self._try_scene_match(msg_lower, device_list)
         if scene_result is not None:
             return scene_result
+
+        # ── Batch / room-level commands ("turn off all in kitchen") ──
+        batch_result = self._try_batch_match(msg_lower, device_list)
+        if batch_result is not None:
+            return batch_result
 
         # ── Check for compound commands ("X and Y") ──────────────────
         # Split on " and " or " then " to detect multi-step
@@ -498,6 +535,86 @@ class ReActAgent:
 
         # ── Single command or query ──────────────────────────────────
         return self._match_single(msg_lower, device_list)
+
+    def _try_batch_match(
+        self, msg_lower: str, device_list: List[str]
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Match 'all/every/everything' batch commands for a room or device type."""
+        # Quick check: must contain "all", "every", or "everything"
+        if not re.search(r"\b(all|every|everything)\b", msg_lower):
+            return None
+
+        # Detect action
+        action = None
+        for pattern, act_name, _ in self._ACTION_PATTERNS:
+            if pattern.search(msg_lower):
+                action = act_name
+                break
+        if action is None:
+            return None
+
+        # Known rooms (derived from device list)
+        room_set: Dict[str, str] = {}  # normalized → canonical
+        for did in device_list:
+            parts = did.split(".", 1)
+            if len(parts) == 2:
+                room = parts[1]
+                room_set[room] = room
+                room_set[room.replace("_", " ")] = room
+
+        # Detect room from message
+        target_room = None
+        # "home", "house", "everywhere" etc. mean ALL devices (no room filter)
+        whole_home = bool(re.search(
+            r"\b(home|house|everywhere|entire\s+house|whole\s+house|entire\s+home|whole\s+home)\b",
+            msg_lower,
+        ))
+        if not whole_home:
+            for name, canonical in sorted(room_set.items(), key=lambda x: -len(x[0])):
+                if name in msg_lower:
+                    target_room = canonical
+                    break
+
+        # Detect optional type filter ("all lights", "all fans")
+        type_filter = None
+        for dt in self._DEVICE_TYPES:
+            # Match singular and plural
+            if re.search(rf"\b{dt}s?\b", msg_lower):
+                type_filter = dt
+                break
+
+        if target_room is None and type_filter is None and not whole_home:
+            return None  # Can't determine scope, let LLM handle
+
+        # Collect matching devices
+        results = []
+        for did in device_list:
+            parts = did.split(".", 1)
+            dev_type = parts[0] if parts else ""
+            dev_room = parts[1] if len(parts) == 2 else ""
+
+            # Filter by room
+            if target_room and dev_room != target_room:
+                continue
+            # Filter by type
+            if type_filter and dev_type != type_filter:
+                continue
+            # Skip sensors for on/off commands — they aren't controllable
+            if dev_type == "sensor" and action in ("turn_on", "turn_off", "toggle"):
+                continue
+
+            results.append({
+                "tool": "control_device",
+                "arguments": {"device_id": did, "action": action},
+            })
+
+        if results:
+            scope = f"room={target_room}" if target_room else ""
+            if type_filter:
+                scope += f" type={type_filter}"
+            logger.info(f"[FastMatch] BATCH '{msg_lower}' → {len(results)} actions ({scope.strip()})")
+            return results
+        return None
 
     def _try_scene_match(
         self, msg_lower: str, device_list: List[str]

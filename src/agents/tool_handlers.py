@@ -106,6 +106,75 @@ def bind_handlers(
 
         return {"devices": sorted(set(device_ids)), "count": len(device_ids)}
 
+    # ── batch_control ─────────────────────────────────────────────────
+    async def handle_batch_control(
+        action: str,
+        room: Optional[str] = None,
+        type: Optional[str] = None,
+        exclude: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Apply an action to all devices matching the room/type filter."""
+        # Build device list from context store
+        try:
+            topics = await context_store.async_get_topics()
+        except Exception:
+            return {"error": "Could not read device list."}
+
+        device_ids: List[str] = []
+        for key in topics:
+            if key.startswith("devices/") and key.endswith("/observed"):
+                device_ids.append(key.replace("devices/", "").replace("/observed", ""))
+        # Legacy fallback
+        if not device_ids:
+            for key in topics:
+                parts = key.split("/")
+                if len(parts) >= 4 and parts[0] == "home" and parts[-1] == "state":
+                    device_ids.append(f"{parts[1]}.{parts[2]}")
+
+        # Filter by room
+        if room:
+            room_lower = room.lower().replace(" ", "_")
+            device_ids = [d for d in device_ids if room_lower in d.lower()]
+        # Filter by type
+        if type:
+            type_lower = type.lower()
+            device_ids = [d for d in device_ids if d.split(".")[0].lower() == type_lower]
+        # Exclude non-controllable sensors for on/off actions
+        if action in ("turn_on", "turn_off", "toggle"):
+            device_ids = [d for d in device_ids if not d.startswith("sensor.")]
+        # Exclude specific devices
+        if exclude:
+            excluded = {e.strip().lower() for e in exclude.split(",")}
+            device_ids = [d for d in device_ids if d.lower() not in excluded]
+
+        if not device_ids:
+            scope = []
+            if room:
+                scope.append(f"room '{room}'")
+            if type:
+                scope.append(f"type '{type}'")
+            return {"error": f"No devices found for {' '.join(scope) or 'the given filter'}."}
+
+        # Execute action on all matched devices
+        results = []
+        for did in device_ids:
+            task: Dict[str, Any] = {"device": did, "action": action}
+            if action == "turn_on":
+                task["value"] = True
+            elif action == "turn_off":
+                task["value"] = False
+            success = await executor_agent.execute(task)
+            results.append({"device_id": did, "success": success})
+
+        succeeded = sum(1 for r in results if r["success"])
+        return {
+            "success": succeeded > 0,
+            "action": action,
+            "total": len(results),
+            "succeeded": succeeded,
+            "devices": [r["device_id"] for r in results],
+        }
+
     # ── create_schedule ────────────────────────────────────────────────
     async def handle_create_schedule(
         device_id: str,
@@ -181,6 +250,7 @@ def bind_handlers(
         "control_device": handle_control_device,
         "query_device": handle_query_device,
         "list_devices": handle_list_devices,
+        "batch_control": handle_batch_control,
         "create_schedule": handle_create_schedule,
         "create_rule": handle_create_rule,
         "respond_to_user": handle_respond,

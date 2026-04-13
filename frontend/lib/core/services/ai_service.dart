@@ -16,7 +16,7 @@ class AIService {
     if (token.isNotEmpty) request.headers['X-HomeGenie-Token'] = token;
     request.files.add(http.MultipartFile.fromBytes('file', audioBytes, filename: filename));
     
-    final streamed = await request.send().timeout(const Duration(seconds: 30));
+    final streamed = await request.send().timeout(const Duration(seconds: 90));
     return await http.Response.fromStream(streamed);
   }
 }

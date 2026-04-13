@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
 import 'package:homegenie_app/core/models/integration.dart';
 import 'package:homegenie_app/features/live/views/platform_setup_view.dart';
@@ -76,7 +77,7 @@ class LiveHubView extends StatelessWidget {
                     label: 'Platforms',
                     value: '$configuredCount / ${ctrl.integrations.isEmpty ? 5 : ctrl.integrations.length}',
                     icon: Icons.extension_rounded,
-                    color: const Color(0xFF6366F1),
+                    color: AppColors.primary,
                     isDark: isDark,
                   ),
                   const SizedBox(width: 12),
@@ -207,7 +208,7 @@ class LiveHubView extends StatelessWidget {
                   icon: Icons.lock_outline_rounded,
                   label: 'Locks & Security',
                   hint: 'Connect via Zigbee or Matter',
-                  color: const Color(0xFF6366F1),
+                  color: AppColors.primary,
                   isDark: isDark,
                 ),
                 const SizedBox(height: 8),
@@ -254,7 +255,7 @@ class LiveHubView extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(Icons.info_outline_rounded,
-                        color: const Color(0xFF6366F1), size: 22),
+                        color: AppColors.primary, size: 22),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Text(

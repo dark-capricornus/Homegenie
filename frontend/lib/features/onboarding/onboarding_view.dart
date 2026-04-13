@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
+import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'package:homegenie_app/core/theme/app_theme.dart';
 
 class OnboardingPage extends StatelessWidget {
@@ -49,7 +50,7 @@ class OnboardingPage extends StatelessWidget {
                     Icon(
                       Icons.home_max_rounded,
                       size: 64,
-                      color: isDark ? Colors.blueAccent : Colors.blue,
+                      color: isDark ? AppColors.primary : AppColors.primary,
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -152,7 +153,7 @@ class _ModeCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isRecommended
-                ? (isDark ? Colors.blueAccent.withOpacity(0.5) : Colors.blue.withOpacity(0.3))
+                ? (isDark ? AppColors.primary.withOpacity(0.5) : AppColors.primary.withOpacity(0.3))
                 : (isDark ? Colors.white10 : Colors.black12),
             width: 2,
           ),
@@ -171,14 +172,14 @@ class _ModeCard extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: isRecommended
-                    ? (isDark ? Colors.blueAccent.withOpacity(0.1) : Colors.blue.withOpacity(0.1))
+                    ? (isDark ? AppColors.primary.withOpacity(0.1) : AppColors.primary.withOpacity(0.1))
                     : (isDark ? Colors.white.withOpacity(0.1) : Colors.grey.withOpacity(0.1)),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 icon,
                 color: isRecommended
-                    ? (isDark ? Colors.blueAccent : Colors.blue)
+                    ? (isDark ? AppColors.primary : AppColors.primary)
                     : (isDark ? Colors.white70 : Colors.black54),
                 size: 28,
               ),
@@ -203,7 +204,7 @@ class _ModeCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.blueAccent,
+                            color: AppColors.primary,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Text(

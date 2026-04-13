@@ -62,21 +62,25 @@ class DeviceService {
     return {'state': <String, dynamic>{}};
   }
 
-  Future<http.Response> fetchDevices(String baseUrl, String? etag) async {
+  Future<http.Response> fetchDevices(String baseUrl, String? etag, {String token = ''}) async {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       if (etag != null) 'If-None-Match': etag,
+      if (token.isNotEmpty) 'X-HomeGenie-Token': token,
     };
     return await http
         .get(Uri.parse('$baseUrl/devices'), headers: headers)
         .timeout(const Duration(seconds: 10));
   }
 
-  Future<http.Response> toggleDevice(String baseUrl, String deviceKey, String action) async {
+  Future<http.Response> toggleDevice(String baseUrl, String deviceKey, String action, {String token = ''}) async {
     return await http
         .post(
           Uri.parse('$baseUrl/devices/control'),
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            if (token.isNotEmpty) 'X-HomeGenie-Token': token,
+          },
           body: json.encode({
             'device_id': deviceKey,
             'action': action,
@@ -85,20 +89,26 @@ class DeviceService {
         .timeout(const Duration(seconds: 5));
   }
 
-  Future<http.Response> fetchEnergyHistory(String baseUrl, {String? deviceId, int days = 1}) async {
+  Future<http.Response> fetchEnergyHistory(String baseUrl, {String? deviceId, int days = 1, String token = ''}) async {
     final uri = Uri.parse('$baseUrl/history/energy').replace(
       queryParameters: {
         if (deviceId != null) 'device_id': deviceId,
         'days': days.toString(),
       },
     );
-    return await http.get(uri).timeout(const Duration(seconds: 5));
+    return await http.get(uri, headers: {
+      'Content-Type': 'application/json',
+      if (token.isNotEmpty) 'X-HomeGenie-Token': token,
+    }).timeout(const Duration(seconds: 5));
   }
 
-  Future<http.Response> fetchDeviceBreakdown(String baseUrl, {int days = 1}) async {
+  Future<http.Response> fetchDeviceBreakdown(String baseUrl, {int days = 1, String token = ''}) async {
     final uri = Uri.parse('$baseUrl/history/devices').replace(
       queryParameters: {'days': days.toString()},
     );
-    return await http.get(uri).timeout(const Duration(seconds: 5));
+    return await http.get(uri, headers: {
+      'Content-Type': 'application/json',
+      if (token.isNotEmpty) 'X-HomeGenie-Token': token,
+    }).timeout(const Duration(seconds: 5));
   }
 }

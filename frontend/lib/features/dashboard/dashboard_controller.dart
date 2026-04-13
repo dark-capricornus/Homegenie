@@ -201,7 +201,7 @@ class DashboardController extends ChangeNotifier {
     double total = 0;
     for (final device in devices) {
       if (device.isOn) {
-        total += (device.data['power_consumption'] ?? 0.0).toDouble();
+        total += device.powerConsumption;
       }
     }
     return total;
@@ -340,9 +340,17 @@ class DashboardController extends ChangeNotifier {
         // Show user voice as message bubble
         chatMessages.add(ChatMessage(text: transcript, isUser: true));
 
-        // If n8n already responded, use that; otherwise send through goal pipeline
+        // Use the AI response from the transcription endpoint if available,
+        // then check for n8n response, otherwise fall back to goal pipeline.
+        final aiResponse = data['response'];
         final n8n = data['n8n_response'];
-        if (n8n != null) {
+        if (aiResponse != null && aiResponse.toString().trim().isNotEmpty) {
+          chatMessages.add(ChatMessage(
+              text: aiResponse.toString(), isUser: false));
+          isChatProcessing = false;
+          notifyListeners();
+          await fetchDevices();
+        } else if (n8n != null) {
           final responseText =
               n8n['response'] ?? n8n['output'] ?? 'Command processed.';
           chatMessages
@@ -351,7 +359,7 @@ class DashboardController extends ChangeNotifier {
           notifyListeners();
           await fetchDevices();
         } else {
-          // sendChatMessage handles isChatProcessing + notifyListeners
+          // No AI or n8n response — send through goal pipeline
           isChatProcessing = false;
           await sendChatMessage(transcript);
         }
@@ -361,7 +369,8 @@ class DashboardController extends ChangeNotifier {
         isChatProcessing = false;
         notifyListeners();
       }
-    } catch (_) {
+    } catch (e, st) {
+      _log.severe('sendVoiceAudio error: $e\n$st');
       chatMessages.add(ChatMessage(
           text: 'Voice processing error. Please try again.', isUser: false));
       isChatProcessing = false;
@@ -420,38 +429,61 @@ class DashboardController extends ChangeNotifier {
       _scheduleNotify();
     }
   }
-
   /// Returns true if [key] belongs to a device we know about.
   /// If _knownDeviceKeys hasn't been populated yet (first /devices call
   /// hasn't completed), we REJECT all updates to prevent phantom devices.
   /// The authoritative device list will arrive shortly via fetchDevices().
-  bool _isKnownDevice(String key) {
-    if (_isDemoMode == true) return true; // Always allow in Demo Mode
-    if (_knownDeviceKeys.isEmpty) return false;
-    return _knownDeviceKeys.contains(key);
+  bool _isKnownDevice(String topic) {
+    // 1. Always allow if it's already in our canonical list from /devices
+    if (_knownDeviceKeys.contains(topic)) return true;
+
+    // 2. If it's a structured topic, check if the derived ID is known
+    if (topic.startsWith('devices/') && topic.endsWith('/observed')) {
+      final id = topic.split('/')[1];
+      if (_knownDeviceKeys.contains(id)) return true;
+    }
+
+    // 3. In Demo Mode, allow "new" topics ONLY if they match device patterns
+    // and are NOT system/probe messages.
+    if (_isDemoMode == true) {
+      if (topic.startsWith('probes/')) return false;
+      if (topic.endsWith('/commanded')) return false;
+      
+      // Allow standard device state patterns
+      if (topic.startsWith('devices/') && topic.endsWith('/observed')) return true;
+      if (topic.startsWith('home/') && topic.endsWith('/state')) return true;
+      
+      // Fallback: if it doesn't look like a device topic, reject it to prevent "phantom" devices
+      return false;
+    }
+
+    return false;
   }
 
   /// Merge a realtime state payload into the existing device entry, updating
   /// only the 'state' sub-map rather than replacing the whole structured
   /// record that /devices returned (which also has device_id, type, name).
-  void _mergeDeviceState(String key, dynamic payload) {
-    final existing = _rawDevices[key];
-    if (existing is Map<String, dynamic> && existing.containsKey('device_id')) {
+  void _mergeDeviceState(String topic, dynamic payload) {
+    final String deviceId = _topicToDeviceKey(topic);
+    
+    final Map<String, dynamic> existing = Map.from(_rawDevices[deviceId] ?? {});
+    
+    if (existing.containsKey('device_id')) {
       // /devices gave us a structured record — update only its 'state' field.
       if (payload is Map) {
-        _rawDevices[key] = {
+        _rawDevices[deviceId] = {
           ...existing,
           'state': Map<String, dynamic>.from(payload),
         };
       } else {
-        _rawDevices[key] = {
+        _rawDevices[deviceId] = {
           ...existing,
           'state': {'state': payload, 'value': payload, 'power': payload},
         };
       }
     } else {
       // No structured record yet — store the raw payload.
-      _rawDevices[key] = payload;
+      _rawDevices[deviceId] = payload;
     }
   }
 
@@ -677,7 +709,9 @@ class DashboardController extends ChangeNotifier {
     }
 
     try {
-      final resp = await _deviceService.fetchDevices(baseUrl, _devicesEtag);
+      final prefs = await SharedPreferences.getInstance();
+      final authToken = prefs.getString(_kTokenKey) ?? '';
+      final resp = await _deviceService.fetchDevices(baseUrl, _devicesEtag, token: authToken);
 
       // 304 Not Modified — nothing changed on the server.
       if (resp.statusCode == 304) {
@@ -739,7 +773,9 @@ class DashboardController extends ChangeNotifier {
     isInsightsLoading = true;
     notifyListeners();
     try {
-      final results = await _insightsService.fetchInsightsData(baseUrl);
+      final prefs = await SharedPreferences.getInstance();
+      final authToken = prefs.getString(_kTokenKey) ?? '';
+      final results = await _insightsService.fetchInsightsData(baseUrl, token: authToken);
 
       if (results[0].statusCode == 200) {
         final data = json.decode(results[0].body) as Map<String, dynamic>;
@@ -768,13 +804,15 @@ class DashboardController extends ChangeNotifier {
     currentHistoryDays = days;
     notifyListeners();
     try {
-      final resp = await _deviceService.fetchEnergyHistory(baseUrl, days: days);
+      final prefs = await SharedPreferences.getInstance();
+      final authToken = prefs.getString(_kTokenKey) ?? '';
+      final resp = await _deviceService.fetchEnergyHistory(baseUrl, days: days, token: authToken);
       if (resp.statusCode == 200) {
         final data = json.decode(resp.body);
         energyHistory = List<Map<String, dynamic>>.from(data['history'] ?? []);
       }
-      
-      final resp2 = await _deviceService.fetchDeviceBreakdown(baseUrl, days: days);
+
+      final resp2 = await _deviceService.fetchDeviceBreakdown(baseUrl, days: days, token: authToken);
       if (resp2.statusCode == 200) {
         final data2 = json.decode(resp2.body);
         energyBreakdown = List<Map<String, dynamic>>.from(data2['breakdown'] ?? []);
@@ -795,8 +833,11 @@ class DashboardController extends ChangeNotifier {
     try {
       final key = _token ?? '';
       final resp = await http.get(
-        Uri.parse('$baseUrl/rules').replace(queryParameters: {'api_key': key}),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('$baseUrl/rules'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (key.isNotEmpty) 'X-HomeGenie-Token': key,
+        },
       );
       if (resp.statusCode == 200) {
         final data = json.decode(resp.body);
@@ -813,9 +854,13 @@ class DashboardController extends ChangeNotifier {
   Future<bool> saveRule(Map<String, dynamic> ruleData) async {
     if (baseUrl.isEmpty) return false;
     try {
+      final key = _token ?? '';
       final resp = await http.post(
         Uri.parse('$baseUrl/rules'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          if (key.isNotEmpty) 'X-HomeGenie-Token': key,
+        },
         body: json.encode(ruleData),
       );
       if (resp.statusCode == 200) {
@@ -831,8 +876,13 @@ class DashboardController extends ChangeNotifier {
   Future<bool> deleteRule(int ruleId) async {
     if (baseUrl.isEmpty) return false;
     try {
+      final key = _token ?? '';
       final resp = await http.delete(
         Uri.parse('$baseUrl/rules/$ruleId'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (key.isNotEmpty) 'X-HomeGenie-Token': key,
+        },
       );
       if (resp.statusCode == 200) {
         await fetchRules();
@@ -890,7 +940,9 @@ class DashboardController extends ChangeNotifier {
 
     try {
       if (baseUrl.isEmpty) return;
-      await _deviceService.toggleDevice(baseUrl, device.key, action);
+      final prefs = await SharedPreferences.getInstance();
+      final authToken = prefs.getString(_kTokenKey) ?? '';
+      await _deviceService.toggleDevice(baseUrl, device.key, action, token: authToken);
       await _incrementAccessCount(device.key);
     } catch (e) {
       _log.warning('Failed to toggle device ${device.key}: $e');

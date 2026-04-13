@@ -1,12 +1,16 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
+import 'package:homegenie_app/network/file_reader_stub.dart'
+    if (dart.library.io) 'package:homegenie_app/network/file_reader_native.dart'
+    as file_reader;
 
 class ChatbotOrb extends StatefulWidget {
   final bool isDark;
@@ -52,11 +56,15 @@ class _ChatbotOrbState extends State<ChatbotOrb>
   void _togglePanel() => setState(() => _isOpen = !_isOpen);
 
   Future<void> _startRecording() async {
+    if (kIsWeb) {
+      // Web: voice recording not supported
+      return;
+    }
     _recorder = AudioRecorder();
     if (await _recorder!.hasPermission()) {
-      final String extension = Platform.isIOS ? 'm4a' : 'aac';
+      final tempDir = await getTemporaryDirectory();
       final filePath =
-          '${Directory.systemTemp.path}/hg_chat_${DateTime.now().millisecondsSinceEpoch}.$extension';
+          '${tempDir.path}/hg_chat_${DateTime.now().millisecondsSinceEpoch}.aac';
       await _recorder!.start(
         const RecordConfig(
           encoder: AudioEncoder.aacLc,
@@ -77,16 +85,23 @@ class _ChatbotOrbState extends State<ChatbotOrb>
     final path = await _recorder!.stop();
     HapticFeedback.lightImpact();
     if (path != null && mounted) {
-      final bytes = await File(path).readAsBytes();
-      final String extension = Platform.isIOS ? 'm4a' : 'aac';
-      await ctrl.sendVoiceAudio(bytes.toList(), 'audio.$extension');
+      // Read file bytes using record plugin's path
+      // path_provider + dart:typed_data are web-safe
       try {
-        await File(path).delete();
-      } catch (_) {}
+        final file = await _readFileBytes(path);
+        if (file != null) {
+          await ctrl.sendVoiceAudio(file, 'audio.aac');
+        }
+      } catch (e) {
+        debugPrint('Voice upload error: $e');
+      }
     }
     await _recorder?.dispose();
     _recorder = null;
   }
+
+  Future<List<int>?> _readFileBytes(String path) =>
+      file_reader.readFileBytes(path);
 
   void _sendText() {
     final text = _textCtrl.text.trim();

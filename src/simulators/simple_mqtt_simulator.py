@@ -87,22 +87,27 @@ class SimpleMQTTSimulator:
                         
                         # Type-specific defaults
                         if device_type == "light":
+                            brightness = d.get("initial_brightness", 0)
+                            is_on = brightness > 0
                             device_state.update({
-                                "state": "on" if d.get("initial_brightness", 0) > 0 else "off",
-                                "brightness": d.get("initial_brightness", 0),
+                                "state": "on" if is_on else "off",
+                                "brightness": brightness,
                                 "color": "white",
-                                "power_consumption": 0.0
+                                "power_consumption": brightness * 0.15 if is_on else 0.0
                             })
                         elif device_type == "switch":
+                            is_on = d.get("initial_state", False)
                             device_state.update({
-                                "state": "on" if d.get("initial_state", False) else "off",
-                                "power_consumption": 0.0
+                                "state": "on" if is_on else "off",
+                                "power_consumption": random.uniform(5.0, 15.0) if is_on else 0.0
                             })
                         elif device_type == "fan":
+                            speed = d.get("initial_speed", 0)
+                            is_on = speed > 0
                             device_state.update({
-                                "state": "off",
-                                "speed": 0,
-                                "power_consumption": 0.0
+                                "state": "on" if is_on else "off",
+                                "speed": speed,
+                                "power_consumption": speed * 15.0 if is_on else 0.0
                             })
                         elif device_type == "lock":
                             device_state.update({
@@ -270,12 +275,19 @@ class SimpleMQTTSimulator:
             if device["device_type"] == "light":
                 device["brightness"] = device.get("brightness", 50) or 50
                 device["power_consumption"] = device["brightness"] * 0.15
-                
+            elif device["device_type"] == "switch":
+                device["power_consumption"] = random.uniform(5.0, 15.0)
+            elif device["device_type"] == "fan":
+                device["speed"] = device.get("speed", 2) or 2
+                device["power_consumption"] = device["speed"] * 15.0
+
         elif action in ["turn_off", "off"]:
             device["state"] = "off"
             if device["device_type"] == "light":
                 device["brightness"] = 0
-                device["power_consumption"] = 0.0
+            elif device["device_type"] == "fan":
+                device["speed"] = 0
+            device["power_consumption"] = 0.0
                 
         elif action == "set_brightness" and value is not None:
             device["brightness"] = max(0, min(100, int(value)))

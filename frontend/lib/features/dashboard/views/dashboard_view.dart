@@ -60,12 +60,14 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<DashboardController>();
-    _log.shout(
+    _log.fine(
         'DASHBOARD_BUILD: loading=${ctrl.isLoading}, devCount=${ctrl.devices.length}');
 
     Widget content;
     if (ctrl.isLoading && ctrl.devices.isEmpty) {
       content = _buildLoadingState('Synchronizing home state...');
+    } else if (!ctrl.isLoading && ctrl.devices.isEmpty && ctrl.connectionStatus == ConnectionStatus.disconnected) {
+      content = _buildErrorState(ctrl);
     } else if (!ctrl.wsConnected && ctrl.devices.isEmpty) {
       content = _buildLoadingState('Connecting to HomeGenie stream...');
     } else {
@@ -110,11 +112,67 @@ class _DashboardPageState extends State<DashboardPage> {
           TextButton.icon(
             onPressed: _showConnectionDialog,
             icon: const Icon(Icons.settings_input_component_rounded, size: 16),
-            label: const Text('Manual Connection Settings', 
+            label: const Text('Manual Connection Settings',
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
             style: TextButton.styleFrom(foregroundColor: AppColors.primary),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(DashboardController ctrl) {
+    final textPrimary = widget.isDark
+        ? AppColors.darkTextPrimary
+        : AppColors.lightTextPrimary;
+    final textSecondary = widget.isDark
+        ? AppColors.darkTextSecondary
+        : AppColors.lightTextSecondary;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cloud_off_rounded, size: 56, color: AppColors.error.withValues(alpha: 0.6)),
+            const SizedBox(height: 16),
+            Text('Unable to reach server',
+                style: TextStyle(
+                    color: textPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 17)),
+            const SizedBox(height: 8),
+            Text(
+                'Make sure the HomeGenie backend is running and accessible.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: textSecondary, fontSize: 13)),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                ctrl.fetchDevices();
+                ctrl.fetchInsights();
+              },
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: _showConnectionDialog,
+              icon: const Icon(Icons.settings_input_component_rounded, size: 16),
+              label: const Text('Connection Settings',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -417,6 +475,8 @@ class _MobileDashboard extends StatelessWidget {
         peakVal = e.value as num;
       }
     }
+    // All zeros means no data yet
+    if (peakVal <= 0) return 'N/A';
     return peak;
   }
 }
@@ -1238,7 +1298,7 @@ class _RoomPowerChart extends StatelessWidget {
       double power = 0;
       for (final d in entry.value) {
         if (d.isOn) {
-          power += (d.data['power_consumption'] ?? 0.0).toDouble();
+          power += d.powerConsumption;
         }
       }
       roomPower[entry.key] = power;

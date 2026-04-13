@@ -21,7 +21,7 @@ class WebSocketService {
   Stream<bool> get connectionStateStream => _connectionStateController.stream;
 
   /// Key for persisted API token in SharedPreferences.
-  static const String _kTokenKey = 'homegenie_api_token';
+  static const String _kTokenKey = 'homegenie_auth_token';
 
   Stream<Map<String, dynamic>> get stream => _controller.stream;
   bool get isConnected => _isConnected;

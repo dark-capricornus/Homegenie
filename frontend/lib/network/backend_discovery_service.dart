@@ -5,6 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:logging/logging.dart';
 
+import 'lan_scanner_stub.dart'
+    if (dart.library.io) 'lan_scanner_native.dart' as lan_scanner;
+
 final Logger _log = Logger('BackendDiscoveryService');
 
 class BackendDiscoveryService {
@@ -71,7 +74,11 @@ class BackendDiscoveryService {
     // 3. Platform Specific & LAN Scan
     final lanIp = prefs.getString(_kLanIpKey);
     final lastHost = prefs.getString(_kLastHostKey);
-    final candidates = _generateCandidates(lanIp: lanIp, lastHost: lastHost);
+    final lanHosts = kIsWeb ? <String>[] : await _detectLanHosts();
+    if (lanHosts.isNotEmpty) {
+      _log.info('Auto-detected ${lanHosts.length} LAN host candidates from device interfaces');
+    }
+    final candidates = _generateCandidates(lanIp: lanIp, lastHost: lastHost, lanHosts: lanHosts);
     _log.info(
         'Starting parallel discovery for ${candidates.length} candidates...');
 
@@ -177,7 +184,8 @@ class BackendDiscoveryService {
 
   /// Generate candidates based on platform and user-configured LAN IP.
   /// No hardcoded developer IPs or tunnels — all configurable via SharedPreferences.
-  List<String> _generateCandidates({String? lanIp, String? lastHost}) {
+  /// [lanHosts] are auto-detected LAN subnet IPs from the device's network interfaces.
+  List<String> _generateCandidates({String? lanIp, String? lastHost, List<String> lanHosts = const []}) {
     final hosts = <String>[];
 
     bool isDev = !kReleaseMode;
@@ -197,6 +205,8 @@ class BackendDiscoveryService {
       if (lastHost != null && lastHost.isNotEmpty) {
         hosts.add(lastHost);
       }
+      // Auto-detected LAN subnet hosts (e.g. from device WiFi IP → probe subnet)
+      hosts.addAll(lanHosts);
       hosts.add('localhost');
       hosts.add('127.0.0.1');
       hosts.add('10.0.2.2'); // Standard Android Emulator
@@ -212,6 +222,21 @@ class BackendDiscoveryService {
     }
 
     return candidates.toSet().toList();
+  }
+
+  /// Detect potential backend hosts on the LAN by inspecting the device's own
+  /// network interfaces. Only works on native platforms (uses dart:io internally).
+  /// Returns empty list on web.
+  static Future<List<String>> _detectLanHosts() async {
+    if (kIsWeb) return [];
+    // Dynamic import of dart:io to avoid web compilation issues.
+    // On native platforms, NetworkInterface is available.
+    try {
+      return await lan_scanner.detectLanHosts();
+    } catch (e) {
+      _log.warning('LAN host detection failed: $e');
+      return [];
+    }
   }
 
   /// Probe candidates in parallel, returning the first one that succeeds.

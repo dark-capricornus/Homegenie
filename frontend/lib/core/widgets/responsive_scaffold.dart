@@ -44,7 +44,7 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
   @override
   Widget build(BuildContext context) {
     if (kDebugMode) {
-       _log.shout('SCAFFOLD_BUILD: isCollapsed=$_isCollapsed, index=${widget.currentIndex}');
+       _log.fine('SCAFFOLD_BUILD: isCollapsed=$_isCollapsed, index=${widget.currentIndex}');
     }
     final isDemoMode = context.select<DashboardController, bool>((c) => c.isDemoMode);
 
@@ -86,7 +86,7 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
                           }
                         },
                         behavior: HitTestBehavior.opaque,
-                        child: widget.body,
+                        child: SizedBox.expand(child: widget.body),
                       ),
                     ),
                   ],
@@ -94,16 +94,21 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
               ),
 
               // Sidebar (Foreground)
-              AppSidebar(
-                currentIndex: widget.currentIndex,
-                onToggle: _toggleSidebar,
-                onTap: (idx) {
-                  widget.onNavTap(idx);
-                  if (!_isCollapsed) setState(() => _isCollapsed = true);
-                },
-                isDark: widget.isDark,
-                isCollapsed: _isCollapsed,
-                isDemoMode: isDemoMode,
+              Positioned(
+                top: 0,
+                left: 0,
+                bottom: 0,
+                child: AppSidebar(
+                  currentIndex: widget.currentIndex,
+                  onToggle: _toggleSidebar,
+                  onTap: (idx) {
+                    widget.onNavTap(idx);
+                    if (!_isCollapsed) setState(() => _isCollapsed = true);
+                  },
+                  isDark: widget.isDark,
+                  isCollapsed: _isCollapsed,
+                  isDemoMode: isDemoMode,
+                ),
               ),
 
               if (widget.floatingActionButton != null)

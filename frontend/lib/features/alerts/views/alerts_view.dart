@@ -204,6 +204,38 @@ class _AlertsPageState extends State<AlertsPage>
               animation: _tabCtrl,
               builder: (_, __) {
                 final items = _filtered(_alerts, tab);
+                if (items.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.notifications_off_outlined,
+                              size: 48,
+                              color: widget.isDark
+                                  ? AppColors.darkTextTertiary
+                                  : AppColors.lightTextTertiary),
+                          const SizedBox(height: 12),
+                          Text('No alerts',
+                              style: TextStyle(
+                                  color: widget.isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15)),
+                          const SizedBox(height: 4),
+                          Text('All clear — nothing to report here.',
+                              style: TextStyle(
+                                  color: widget.isDark
+                                      ? AppColors.darkTextTertiary
+                                      : AppColors.lightTextTertiary,
+                                  fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 return RefreshIndicator(
                   onRefresh: () async {
                     setState(() {
@@ -255,8 +287,9 @@ class _AlertsPageState extends State<AlertsPage>
       isDark: widget.isDark,
       actions: [
         IconButton(
-            icon: Icon(Icons.settings_outlined, color: _textSecondary),
-            onPressed: () {}),
+            icon: Icon(Icons.settings_outlined, color: _textSecondary.withValues(alpha: 0.4)),
+            onPressed: null,
+            tooltip: 'Alert settings coming soon'),
       ],
     );
   }

@@ -1,7 +1,8 @@
-import 'package:flutter/foundation.dart'; // FORCE REBUILD 103
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
+import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'package:homegenie_app/core/theme/app_theme.dart';
 import 'package:homegenie_app/features/root/root_page.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
@@ -63,10 +64,21 @@ class _HomeGenieAppState extends State<HomeGenieApp> {
           appLog.info('ROOT_BUILD: isLoading=$isLoading, hasModeSet=$hasModeSet, isLoggedIn=$isLoggedIn');
 
           if (isLoading && !hasModeSet) {
-            return const Scaffold(
-              backgroundColor: Color(0xFF0F1115),
+            return Scaffold(
+              backgroundColor: _isDark ? AppColors.darkBackground : AppColors.lightBackground,
               body: Center(
-                child: CircularProgressIndicator(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(color: AppColors.primary),
+                    const SizedBox(height: 16),
+                    Text('Starting HomeGenie...',
+                        style: TextStyle(
+                          color: _isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          fontSize: 13,
+                        )),
+                  ],
+                ),
               ),
             );
           }

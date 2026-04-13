@@ -160,8 +160,14 @@ class DeviceSimulator:
                 state.update({"detected": False, "confidence": 0.0})
             elif "light" in location.lower():
                 state.update({"value": random.randint(10, 1000), "unit": "lux"})
-        elif device_type in ["light", "switch", "fan"]:
-            state["power_consumption"] = 0.0
+        elif device_type == "light":
+            brightness = state.get("brightness", 0)
+            state["power_consumption"] = brightness * 0.8 if state.get("state") == "on" and brightness > 0 else 0.0
+        elif device_type == "switch":
+            state["power_consumption"] = random.uniform(5.0, 15.0) if state.get("state") == "on" else 0.0
+        elif device_type == "fan":
+            speed = state.get("speed", 0)
+            state["power_consumption"] = speed * 15.0 if state.get("state") == "on" and speed > 0 else 0.0
         elif device_type == "lock":
             state["battery"] = random.randint(70, 100)
             state["last_access"] = (datetime.now() - timedelta(hours=random.randint(1, 48))).isoformat()

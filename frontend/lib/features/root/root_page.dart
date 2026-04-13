@@ -59,13 +59,13 @@ class _RootPageState extends State<RootPage> with WidgetsBindingObserver {
 
   void _onNavTap(int index) {
     if (_currentIndex == index) return;
-    _log.shout('NAV_TAP: from $_currentIndex to $index');
+    _log.fine('NAV_TAP: from $_currentIndex to $index');
     setState(() => _currentIndex = index);
   }
 
   @override
   Widget build(BuildContext context) {
-    _log.shout('ROOT_BUILD: index=$_currentIndex');
+    _log.fine('ROOT_BUILD: index=$_currentIndex');
 
     final isDemo = context.select<DashboardController, bool>((c) => c.isDemoMode);
 
@@ -109,6 +109,7 @@ class _RootPageState extends State<RootPage> with WidgetsBindingObserver {
           ResponsiveScaffold(
             body: IndexedStack(
               index: _currentIndex,
+              sizing: StackFit.expand,
               children: pages,
             ),
             currentIndex: _currentIndex,

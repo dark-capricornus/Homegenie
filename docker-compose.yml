@@ -49,7 +49,7 @@ services:
       # LLM / Ollama settings (host desktop Ollama topology - change OLLAMA_HOST for Compose topology)
       - LLM_ENABLED=true
       - LLM_PROVIDER=ollama
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_HOST=http://ollama:11434
       - OLLAMA_MODEL=qwen2.5:7b-instruct
       - LLM_TIMEOUT=30
       - PLANNER_TIMEOUT=25
@@ -114,7 +114,7 @@ services:
       # LLM / Ollama settings (host desktop Ollama topology - change OLLAMA_HOST for Compose topology)
       - LLM_ENABLED=true
       - LLM_PROVIDER=ollama
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_HOST=http://ollama:11434
       - OLLAMA_MODEL=qwen2.5:7b-instruct
       - LLM_TIMEOUT=30
       - PLANNER_TIMEOUT=25
@@ -128,37 +128,23 @@ services:
       - homegenie-net
     restart: unless-stopped
 
-networks:
-  # ─────────────────────────────────────────────────────────────────────────
-  # Optional: Compose-managed Ollama (alternative to host-desktop Ollama)
-  # To activate:
-  #   1. Uncomment the entire ollama service block below.
-  #   2. Change OLLAMA_HOST in both homegenie and homegenie-dev to:
-  #        OLLAMA_HOST=http://ollama:11434
-  #   3. After first `docker compose up`, pull the model:
-  #        docker exec homegenie-ollama ollama pull qwen2.5:7b-instruct
-  #
-  # Keep this block commented out to use the Ollama running on your host desktop
-  # (the default OLLAMA_HOST=http://host.docker.internal:11434 covers that case).
-  # Linux users: replace host.docker.internal with your host's LAN IP.
-  # ─────────────────────────────────────────────────────────────────────────
-  #
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: homegenie-ollama
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama-data:/root/.ollama
-  #   networks:
-  #     - homegenie-net
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
+  ollama:
+    image: ollama/ollama:latest
+    container_name: homegenie-ollama
+    # Port not exposed on host to avoid conflict with host Ollama.
+    # Other compose services reach it via http://ollama:11434 on the docker network.
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - homegenie-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
+networks:
   homegenie-net:
     name: homegenie-net
     driver: bridge
@@ -166,4 +152,4 @@ networks:
 volumes:
   mqtt-data:
   mqtt-logs:
-  ollama-data:  # Used when the Compose-managed ollama service below is enabled
+  ollama-data:

@@ -801,9 +801,31 @@ async def lifespan(app: FastAPI):
 
             except Exception as e:
                 logger.exception(f"❌ Failed to hydrate ContextStore from DB: {e}")
+
+            # Reload memory/analytics history from DB
+            try:
+                await memory_agent.load_history_from_db()
+                logger.info("✅ Reloaded memory agent history from DB")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not reload memory history: {e}")
+
+            # Seed default user (admin/admin) if no users exist yet so the
+            # login screen works out of the box on a fresh DB.
+            try:
+                existing = await db_v2.get_user_by_username("admin")
+                if not existing:
+                    pw = pwd_context.hash("admin") if pwd_context else "admin"
+                    await db_v2.create_user(db_v2.User(
+                        username="admin",
+                        email="admin@homegenie.local",
+                        hashed_password=pw,
+                    ))
+                    logger.info("✅ Seeded default user: admin / admin")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not seed default user: {e}")
         except Exception as e:
             logger.error(f"❌ Postgres DB connection failed: {e}")
-    
+
     # Initialize sensor agent in background
     global sensor_agent, voice_agent
     
@@ -1179,9 +1201,8 @@ async def process_goal(
     response_text = ""
 
     try:
-        # ── Primary: ReAct agent with tool calling ────────────────────
-        llm_enabled = os.getenv("LLM_ENABLED", "false").lower() in ("1", "true", "yes")
-        if llm_enabled and react_agent:
+        # ── Primary: ReAct agent (fast-match always, LLM loop if enabled) ─
+        if react_agent:
             result = await react_agent.process(goal, user_id)
             response_text = result.get("response", "")
             actions = result.get("actions_taken", [])
@@ -1535,16 +1556,24 @@ async def transcribe_voice(
                 fmt = "ogg"
             elif "webm" in filename.lower() or "webm" in mime_type:
                 fmt = "webm"
-            elif "aac" in filename.lower() or "aac" in mime_type:
-                fmt = "aac"
             elif "m4a" in filename.lower() or "mp4" in mime_type:
+                fmt = "m4a"
+            elif "aac" in filename.lower() or "aac" in mime_type:
+                # Android's MediaRecorder writes M4A/MP4 containers even with
+                # .aac extension.  Try the MP4 demuxer first, then raw AAC.
                 fmt = "m4a"
             elif "wav" in filename.lower():
                 fmt = "wav"
             else:
-                fmt = None # Let ffmpeg/pydub guess
+                fmt = None  # Let ffmpeg/pydub auto-detect
 
-            audio_seg = AudioSegment.from_file(_io.BytesIO(audio_content), format=fmt)
+            try:
+                audio_seg = AudioSegment.from_file(_io.BytesIO(audio_content), format=fmt)
+            except Exception:
+                # Retry with auto-detection if the explicit format failed
+                logger.warning(f"Format '{fmt}' failed, retrying with auto-detect")
+                audio_seg = AudioSegment.from_file(_io.BytesIO(audio_content))
+
             audio_seg = audio_seg.set_frame_rate(16000).set_channels(1).set_sample_width(2)
             pcm_data = audio_seg.raw_data
 
@@ -1552,9 +1581,27 @@ async def transcribe_voice(
             logger.error(f"Audio conversion failed: {conv_err}")
             return {"error": f"Audio format conversion failed: {conv_err}"}
 
+        # Build device list for grammar-constrained recognition
+        _dev_list = None
+        try:
+            _topics = await context_store.async_get_topics()
+            _dev_list = [
+                k.replace("devices/", "").replace("/observed", "")
+                for k in _topics
+                if k.startswith("devices/") and k.endswith("/observed")
+            ]
+            if not _dev_list:
+                _dev_list = [
+                    f"{k.split('/')[1]}.{k.split('/')[2]}"
+                    for k in _topics
+                    if k.startswith("home/") and k.endswith("/state") and len(k.split("/")) >= 4
+                ]
+        except Exception:
+            pass
+
         # Transcribe with Vosk (runs in thread pool to avoid blocking event loop)
         transcript_text = await asyncio.get_event_loop().run_in_executor(
-            None, voice_agent.transcribe_pcm_bytes, pcm_data
+            None, voice_agent.transcribe_pcm_bytes, pcm_data, 16000, _dev_list
         )
 
         logger.info(f"Voice transcribed (Vosk): '{transcript_text}'")

@@ -72,3 +72,5 @@ env/
 pgdata/
 n8n/
 tests/
+Images/
+PDF_TO_WORD.py

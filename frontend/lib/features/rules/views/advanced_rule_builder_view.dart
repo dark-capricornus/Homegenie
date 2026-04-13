@@ -69,17 +69,21 @@ class AdvancedRuleBuilderView extends StatelessWidget {
             ),
             const SizedBox(height: 32),
             Center(
-              child: OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.add),
-                label: const Text('Add Components'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side: const BorderSide(color: AppColors.primary),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              child: Tooltip(
+                message: 'Custom component builder coming soon',
+                child: OutlinedButton.icon(
+                  onPressed: null,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Components'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    disabledForegroundColor: AppColors.primary.withValues(alpha: 0.4),
+                    side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),

@@ -180,17 +180,22 @@ class AddDeviceView extends StatelessWidget {
               ],
             ),
           ),
-          ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          Tooltip(
+            message: 'Device pairing coming soon',
+            child: ElevatedButton(
+              onPressed: null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.3),
+                disabledForegroundColor: Colors.white54,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: const Text('Connect'),
             ),
-            child: const Text('Connect'),
           ),
         ],
       ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'package:homegenie_app/core/theme/app_theme.dart';
-import 'package:homegenie_app/core/navigation/app_bottom_nav.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
 import 'package:homegenie_app/shared/widgets/shared_widgets.dart';
 import 'package:provider/provider.dart';
@@ -235,7 +234,7 @@ class _SimulationPageState extends State<SimulationPage> {
                               ? AppColors.darkTextSecondary
                               : AppColors.lightTextSecondary,
                           fontSize: 13)),
-                  onTap: () {},
+                  onTap: null,
                 ),
               ),
               const SizedBox(height: 14),
@@ -276,10 +275,7 @@ class _SimulationPageState extends State<SimulationPage> {
           ),
         ),
       ]),
-      bottomNavigationBar: AppBottomNav(
-          currentIndex: widget.navIndex,
-          onTap: widget.onNavTap,
-          isDark: widget.isDark),
+      // Navigation handled by root_page's ResponsiveScaffold
     );
   }
 

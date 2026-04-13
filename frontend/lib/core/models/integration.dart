@@ -83,7 +83,7 @@ class PlatformIntegration {
       'name': 'Matter',
       'description': 'Universal smart home standard across all ecosystems',
       'icon': Icons.hub_rounded,
-      'color': Color(0xFF6366F1),
+      'color': const Color(0xFF137FEC),
     },
     'custom_mqtt': {
       'name': 'Custom MQTT',

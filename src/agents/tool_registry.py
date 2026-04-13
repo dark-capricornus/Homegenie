@@ -155,6 +155,25 @@ CREATE_RULE = Tool(
     ],
 )
 
+BATCH_CONTROL = Tool(
+    name="batch_control",
+    description=(
+        "Control multiple devices at once. Use this when the user says "
+        "'all devices in <room>', 'all lights', 'everything in kitchen', etc. "
+        "Filters by room AND/OR device type, then applies the action to every match."
+    ),
+    parameters=[
+        ToolParam("action", "string", "Action to perform on all matching devices",
+                  enum=["turn_on", "turn_off", "lock", "unlock", "toggle"]),
+        ToolParam("room", "string", "Room to filter by (e.g. 'kitchen', 'bedroom'). Omit for all rooms.",
+                  required=False),
+        ToolParam("type", "string", "Device type to filter (e.g. 'light', 'fan'). Omit for all types.",
+                  required=False),
+        ToolParam("exclude", "string", "Comma-separated device IDs to skip (e.g. 'thermostat.kitchen')",
+                  required=False),
+    ],
+)
+
 RESPOND_TO_USER = Tool(
     name="respond_to_user",
     description="Send a text response to the user. Use this for questions, confirmations, or status updates.",
@@ -176,7 +195,7 @@ ASK_CLARIFICATION = Tool(
 def build_default_registry() -> ToolRegistry:
     """Create a registry with all built-in tools (handlers not yet bound)."""
     registry = ToolRegistry()
-    for tool in [CONTROL_DEVICE, QUERY_DEVICE, LIST_DEVICES,
+    for tool in [CONTROL_DEVICE, QUERY_DEVICE, LIST_DEVICES, BATCH_CONTROL,
                  CREATE_SCHEDULE, CREATE_RULE, RESPOND_TO_USER, ASK_CLARIFICATION]:
         registry.register(tool)
     return registry

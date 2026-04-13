@@ -56,10 +56,16 @@ class DeviceInfo {
 
   bool get isOn {
     final s = state;
-    return s['power']?.toString().toLowerCase() == 'on' ||
-        s['state']?.toString().toLowerCase() == 'on' ||
+    final p = s['power'] ?? data['power'];
+    final st = s['state'] ?? data['state'];
+    
+    return p?.toString().toLowerCase() == 'on' ||
+        st?.toString().toLowerCase() == 'on' ||
+        p == true ||
+        st == true ||
         s['enabled'] == true ||
-        s['playing'] == true;
+        s['playing'] == true ||
+        data['enabled'] == true;
   }
 
   bool get isLocked => data['locked'] == true || state['locked'] == true;
@@ -87,8 +93,46 @@ class DeviceInfo {
   }
 
   int? get brightness {
-    final b = state['brightness'];
+    final b = state['brightness'] ?? data['brightness'];
     if (b == null) return null;
     return (b as num).toInt();
+  }
+
+  double get powerConsumption {
+    // 1. Try nested state first (standard for HomeGenie)
+    final s = state;
+    final pState = s['power_consumption'] ?? s['power_usage'] ?? s['energy'];
+    if (pState != null) {
+      final v = pState is num
+          ? pState.toDouble()
+          : (pState is String ? double.tryParse(pState) ?? 0.0 : 0.0);
+      if (v > 0) return v;
+    }
+
+    // 2. Try top-level data (sometimes produced by normalization)
+    final pData = data['power_consumption'] ?? data['power_usage'] ?? data['energy'];
+    if (pData != null) {
+      final v = pData is num
+          ? pData.toDouble()
+          : (pData is String ? double.tryParse(pData) ?? 0.0 : 0.0);
+      if (v > 0) return v;
+    }
+
+    // 3. Estimate based on device type when device is on but no power data
+    if (isOn) {
+      switch (type) {
+        case 'light':
+          final b = brightness ?? 50;
+          return b * 0.15; // ~15W at full brightness
+        case 'switch':
+          return 10.0;
+        case 'thermostat':
+          return 25.0;
+        default:
+          return 5.0;
+      }
+    }
+
+    return 0.0;
   }
 }

@@ -129,6 +129,30 @@ class AppSidebar extends StatelessWidget {
     );
   }
 
+  static void _confirmLogout(BuildContext context, DashboardController controller) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('You will need to sign in again to access your account.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              controller.logout();
+            },
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHeader(bool isDark, bool collapsed) {
     return InkWell(
       onTap: onToggle,
@@ -196,63 +220,76 @@ class AppSidebar extends StatelessWidget {
     final textPrimary =
         isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface2 : AppColors.lightSurface2,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Consumer<DashboardController>(
+      builder: (context, ctrl, _) {
+        final devCount = ctrl.devices.length;
+        final onCount = ctrl.devices.where((d) => d.isOn).length;
+        final pct = devCount > 0 ? onCount / devCount : 0.0;
+        final connected = ctrl.connectionStatus == ConnectionStatus.connected || ctrl.wsConnected;
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface2 : AppColors.lightSurface2,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.timer_outlined, color: textSecondary, size: 14),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text('Uptime: 14d 2h',
-                    style: TextStyle(color: textSecondary, fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.clip),
+              Row(
+                children: [
+                  Icon(
+                    connected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                    color: connected ? AppColors.success : AppColors.error,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(connected ? 'Server connected' : 'Disconnected',
+                        style: TextStyle(color: textSecondary, fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.clip),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text('Active Devices',
+                        style: TextStyle(
+                            color: textPrimary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.clip),
+                  ),
+                  Text('$onCount / $devCount',
+                      style: TextStyle(
+                          color: AppColors.success,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: pct,
+                  backgroundColor:
+                      isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(AppColors.success),
+                  minHeight: 4,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text('Efficiency',
-                    style: TextStyle(
-                        color: textPrimary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13),
-                    maxLines: 1,
-                    overflow: TextOverflow.clip),
-              ),
-              const Text('A++',
-                  style: TextStyle(
-                      color: AppColors.success,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: 0.94,
-              backgroundColor:
-                  isDark ? AppColors.darkBorder : AppColors.lightBorder,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppColors.success),
-              minHeight: 4,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -375,7 +412,7 @@ class AppSidebar extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.logout, size: 18),
                       color: AppColors.error.withOpacity(0.7),
-                      onPressed: () => controller.logout(),
+                      onPressed: () => _confirmLogout(context, controller),
                       tooltip: 'Logout',
                     )
                   else if (!collapsed)

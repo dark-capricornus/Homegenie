@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:homegenie_app/core/theme/app_colors.dart';
 
 /// Placeholder shown in Live mode for pages that don't have real device data yet.
 /// Displays a "Connect to..." message directing users to the Live Hub.
@@ -30,13 +31,13 @@ class LiveModePlaceholder extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withOpacity(0.08),
+                  color: AppColors.primary.withOpacity(0.08),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   icon,
                   size: 56,
-                  color: const Color(0xFF6366F1).withOpacity(0.4),
+                  color: AppColors.primary.withOpacity(0.4),
                 ),
               ),
               const SizedBox(height: 24),

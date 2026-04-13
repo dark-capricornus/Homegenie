@@ -519,7 +519,7 @@ class _RoomDetailPage extends StatelessWidget {
     for (final d in devices) {
       final isOn = ctrl.deviceToggles[d.key] ?? d.isOn;
       if (isOn) {
-        total += (d.data['power_consumption'] ?? 0.0).toDouble();
+        total += d.powerConsumption;
       }
     }
     return total;

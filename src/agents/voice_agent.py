@@ -356,10 +356,105 @@ class VoiceAgent:
             logging.error(f"Vosk offline recognition failed: {e}")
             return ""
     
-    def transcribe_pcm_bytes(self, pcm_data: bytes, sample_rate: int = 16000) -> str:
+    # ── Home automation grammar for constrained Vosk recognition ──────
+    # Vosk KaldiRecognizer accepts a JSON word list that constrains the
+    # decoder, dramatically improving accuracy for known command patterns.
+    # Words/phrases here are split into individual tokens by Vosk.
+    _GRAMMAR_WORDS: list = []  # built once at class level
+
+    @classmethod
+    def _build_grammar(cls, device_list: list | None = None) -> list:
+        """Build a flat word list for Vosk grammar-constrained recognition."""
+        words = set()
+
+        # ── Action verbs & modifiers ──
+        for w in [
+            "turn", "switch", "set", "dim", "brighten", "increase", "decrease",
+            "lock", "unlock", "toggle", "open", "close", "enable", "disable",
+            "check", "show", "get", "what", "what's", "how", "is", "are",
+            "status", "state", "tell", "me", "about",
+        ]:
+            words.add(w)
+
+        # ── Prepositions, connectors, qualifiers ──
+        for w in [
+            "on", "off", "the", "a", "in", "to", "of", "and", "then", "also",
+            "all", "every", "everything", "except", "but", "not",
+            "my", "our", "this", "that", "it", "please",
+        ]:
+            words.add(w)
+
+        # ── Scope words ──
+        for w in [
+            "home", "house", "everywhere", "devices", "device",
+        ]:
+            words.add(w)
+
+        # ── Device types ──
+        for w in [
+            "light", "lights", "lamp", "lamps",
+            "fan", "fans",
+            "switch", "switches", "outlet", "outlets",
+            "lock", "locks", "door", "doors",
+            "thermostat", "temperature", "temp",
+            "sensor", "sensors",
+            "media", "speaker", "tv", "television",
+            "window", "windows", "curtain", "curtains",
+            "camera", "cameras",
+        ]:
+            words.add(w)
+
+        # ── Room names ──
+        for w in [
+            "kitchen", "bedroom", "living", "room", "bathroom", "hallway",
+            "garage", "office", "backyard", "porch", "front", "back",
+            "entry", "outdoor", "outdoors", "dining", "basement", "attic",
+            "master", "guest", "laundry", "nursery", "studio",
+        ]:
+            words.add(w)
+
+        # ── Scene / routine keywords ──
+        for w in [
+            "goodnight", "good", "night", "morning", "movie", "time", "mode",
+            "leaving", "going", "sleep", "bed", "wake", "up",
+        ]:
+            words.add(w)
+
+        # ── Value words ──
+        for w in [
+            "zero", "one", "two", "three", "four", "five", "six", "seven",
+            "eight", "nine", "ten", "twenty", "thirty", "forty", "fifty",
+            "sixty", "seventy", "eighty", "ninety", "hundred", "percent",
+            "degrees", "warm", "cool", "cold", "hot", "bright", "low", "high",
+            "half", "full", "max", "min", "minimum", "maximum",
+        ]:
+            words.add(w)
+
+        # ── Extract words from actual device IDs (e.g. "light.living_room")
+        if device_list:
+            for did in device_list:
+                for part in did.replace(".", " ").replace("_", " ").split():
+                    words.add(part.lower())
+
+        # Vosk grammar must include "[unk]" token for words outside vocabulary
+        word_list = sorted(words)
+        word_list.append("[unk]")
+        return word_list
+
+    def transcribe_pcm_bytes(
+        self,
+        pcm_data: bytes,
+        sample_rate: int = 16000,
+        device_list: list | None = None,
+    ) -> str:
         """
         Transcribe raw PCM 16-bit mono audio bytes using Vosk.
-        Accepts raw PCM bytes (already converted to 16kHz, 16-bit, mono).
+
+        Uses a two-pass strategy:
+          1. Grammar-constrained pass with home automation vocabulary for
+             high accuracy on known commands.
+          2. If the constrained pass returns empty/too short, falls back to
+             freeform recognition so conversational speech still works.
         """
         try:
             import vosk
@@ -369,13 +464,34 @@ class VoiceAgent:
                 logging.error("Vosk model not loaded")
                 return ""
 
-            rec = vosk.KaldiRecognizer(self.vosk_model, sample_rate)
             chunk_size = 4000
+
+            # ── Pass 1: Grammar-constrained recognition ──
+            grammar = self._build_grammar(device_list)
+            grammar_json = _json.dumps(grammar)
+            rec = vosk.KaldiRecognizer(self.vosk_model, sample_rate, grammar_json)
             for i in range(0, len(pcm_data), chunk_size):
                 rec.AcceptWaveform(pcm_data[i:i + chunk_size])
 
             result = _json.loads(rec.FinalResult())
-            return result.get("text", "")
+            text = result.get("text", "").strip()
+
+            # Filter out results that are only [unk] tokens or too short
+            clean = text.replace("[unk]", "").strip()
+            if len(clean.split()) >= 2:
+                logging.info(f"Vosk grammar pass: '{text}' → clean: '{clean}'")
+                return clean
+
+            # ── Pass 2: Freeform recognition (no grammar constraint) ──
+            logging.info(f"Vosk grammar pass too short ('{clean}'), trying freeform")
+            rec_free = vosk.KaldiRecognizer(self.vosk_model, sample_rate)
+            for i in range(0, len(pcm_data), chunk_size):
+                rec_free.AcceptWaveform(pcm_data[i:i + chunk_size])
+
+            result_free = _json.loads(rec_free.FinalResult())
+            text_free = result_free.get("text", "").strip()
+            logging.info(f"Vosk freeform pass: '{text_free}'")
+            return text_free
 
         except Exception as e:
             logging.error(f"Vosk transcription failed: {e}")

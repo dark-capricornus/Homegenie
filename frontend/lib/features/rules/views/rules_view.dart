@@ -120,7 +120,11 @@ class _RulesPageState extends State<RulesPage> {
                       rule: rule,
                       isDark: widget.isDark,
                       onToggle: (v) => setState(() => rule.isActive = v),
-                      onTap: () {},
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const AdvancedRuleBuilderView()),
+                      ),
                     ),
                   )),
             ],
@@ -163,7 +167,9 @@ class RuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppSurface(
+    return GestureDetector(
+      onTap: onTap,
+      child: AppSurface(
       isDark: isDark,
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -310,6 +316,7 @@ class RuleCard extends StatelessWidget {
           ]),
         ),
       ]),
+    ),
     );
   }
 }

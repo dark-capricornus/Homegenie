@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'routine_builder_view.dart';
 
 class AutomationSelectionView extends StatelessWidget {
@@ -60,7 +61,7 @@ class AutomationSelectionView extends StatelessWidget {
                 'Visual Routine Builder',
                 'Create IF-THEN rules for your smart home devices without writing code.',
                 Icons.auto_fix_high_rounded,
-                const Color(0xFF6366F1),
+                AppColors.primary,
               ),
             ),
           ),
@@ -100,7 +101,7 @@ class AutomationSelectionView extends StatelessWidget {
                   'Matter',
                   'Universal standard',
                   Icons.hub_rounded,
-                  Colors.blueAccent,
+                  AppColors.primary,
                 ),
                 _buildProtocolCard(
                   context,

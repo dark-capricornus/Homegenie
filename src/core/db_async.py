@@ -268,6 +268,19 @@ async def save_memory_entry(entry: Dict[str, Any]) -> Optional[int]:
     return int(getattr(me, 'id', int(datetime.now(timezone.utc).timestamp() * 1000)))
 
 
+async def get_memory_entries(limit: int = 1000) -> list:
+    """Retrieve persisted memory entries, most recent first."""
+    try:
+        _, async_session = _ensure_db()
+    except RuntimeError:
+        return []
+    async with async_session() as sess:
+        result = await sess.execute(
+            select(MemoryEntry).order_by(MemoryEntry.ts.desc()).limit(limit)
+        )
+        return list(result.scalars().all())
+
+
 async def save_schedule_job(job: Dict[str, Any]):
     """Create or update a schedule job record.
 
