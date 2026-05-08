@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
 
 /// Placeholder shown in Live mode for pages that don't have real device data yet.
@@ -44,7 +43,7 @@ class LiveModePlaceholder extends StatelessWidget {
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
+                style: TextStyle(fontFamily: 'Outfit', 
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: isDark ? Colors.white : Colors.black87,
@@ -54,7 +53,7 @@ class LiveModePlaceholder extends StatelessWidget {
               Text(
                 description,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
+                style: TextStyle(fontFamily: 'Inter', 
                   fontSize: 14,
                   color: isDark ? Colors.white.withOpacity(0.4) : Colors.black45,
                   height: 1.5,
@@ -80,7 +79,7 @@ class LiveModePlaceholder extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       'Go to Live Hub to connect platforms',
-                      style: GoogleFonts.inter(
+                      style: TextStyle(fontFamily: 'Inter', 
                         fontSize: 13,
                         color: isDark ? Colors.white38 : Colors.black38,
                       ),

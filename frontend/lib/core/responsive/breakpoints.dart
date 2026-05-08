@@ -4,6 +4,7 @@ enum ScreenSize { mobile, web, desktop }
 
 extension ScreenSizeX on ScreenSize {
   bool get isMobile => this == ScreenSize.mobile;
+  bool get isTablet => this == ScreenSize.web;
   bool get isWeb => this == ScreenSize.web;
   bool get isDesktop => this == ScreenSize.desktop;
 }

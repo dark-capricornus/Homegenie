@@ -98,6 +98,12 @@ class DeviceInfo {
     return (b as num).toInt();
   }
 
+  int? get position {
+    final p = state['position'] ?? data['position'];
+    if (p == null) return null;
+    return (p as num).toInt();
+  }
+
   double get powerConsumption {
     // 1. Try nested state first (standard for HomeGenie)
     final s = state;

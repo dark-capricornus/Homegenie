@@ -19,6 +19,7 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
+  <meta name="theme-color" content="#0b0e14">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,7 +30,15 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>homegenie_app</title>
+  <!--
+    Preload the Flutter bootstrap so the browser starts the network fetch
+    while the document is still parsing. Cuts time-to-first-interaction and
+    shrinks the INP window for the first user interaction.
+  -->
+  <link rel="preload" href="flutter_bootstrap.js" as="script">
+  <link rel="modulepreload" href="flutter_bootstrap.js">
+
+  <title>HomeGenie</title>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>

@@ -4,6 +4,7 @@ import 'package:homegenie_app/core/theme/app_theme.dart';
 import 'package:homegenie_app/features/rules/views/advanced_rule_builder_view.dart';
 import 'package:homegenie_app/shared/widgets/shared_widgets.dart';
 import 'package:homegenie_app/core/responsive/breakpoints.dart';
+import 'package:homegenie_app/core/widgets/page_header.dart';
 // ── MODEL ──────────────────────────────────────────────────────────
 class AutomationRule {
   final String id;
@@ -73,8 +74,18 @@ List<AutomationRule> _mockRules() => [
 // ── RULES PAGE ──────────────────────────────────────────────────────
 class RulesPage extends StatefulWidget {
   final bool isDark;
+  final VoidCallback? onToggleTheme;
+  final ValueChanged<int>? onNavTap;
 
-  const RulesPage({super.key, required this.isDark});
+  final int currentIndex;
+
+  const RulesPage({
+    super.key,
+    required this.isDark,
+    required this.currentIndex,
+    this.onToggleTheme,
+    this.onNavTap,
+  });
 
   @override
   State<RulesPage> createState() => _RulesPageState();
@@ -89,11 +100,18 @@ class _RulesPageState extends State<RulesPage> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 24),
       children: [
-        _buildHeader(context),
+        PageHeader(
+          title: 'Automation Rules',
+          subtitle: 'Triggers & Actions',
+          isDark: widget.isDark,
+          currentIndex: widget.currentIndex,
+          onToggleTheme: widget.onToggleTheme,
+          onNavTap: widget.onNavTap,
+        ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
           child: Column(
             children: [
               Row(children: [
@@ -134,16 +152,6 @@ class _RulesPageState extends State<RulesPage> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    final isMobile = Breakpoints.of(context).isMobile;
-    return PageHeader(
-      title: 'Automations & Intelligence',
-      isDark: widget.isDark,
-      leading: isMobile
-          ? null
-          : const Icon(Icons.menu, color: AppColors.primary),
-    );
-  }
 }
 
 class RuleCard extends StatelessWidget {

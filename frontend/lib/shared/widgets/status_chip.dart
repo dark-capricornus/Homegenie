@@ -71,18 +71,21 @@ class AgentChip extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final bool isNarrow;
 
   const AgentChip({
     super.key,
     required this.label,
     required this.value,
     required this.color,
+    this.isNarrow = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: EdgeInsets.symmetric(
+          horizontal: isNarrow ? 6 : 8, vertical: isNarrow ? 6 : 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(AppTheme.radiusSm),
@@ -94,19 +97,25 @@ class AgentChip extends StatelessWidget {
           Text(label,
               style: TextStyle(
                   color: color.withValues(alpha: 0.7),
-                  fontSize: 8,
+                  fontSize: isNarrow ? 7 : 8,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 3),
           Row(mainAxisSize: MainAxisSize.min, children: [
             Container(
-              width: 5,
-              height: 5,
+              width: isNarrow ? 4 : 5,
+              height: isNarrow ? 4 : 5,
               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
-            const SizedBox(width: 4),
-            Text(value,
-                style: TextStyle(
-                    color: color, fontSize: 10, fontWeight: FontWeight.w700)),
+            SizedBox(width: isNarrow ? 3 : 4),
+            Flexible(
+              child: Text(value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: isNarrow ? 9 : 10,
+                      fontWeight: FontWeight.w700)),
+            ),
           ]),
         ],
       ),

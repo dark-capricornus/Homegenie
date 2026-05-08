@@ -32,6 +32,7 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 MAX_EXECUTION_HISTORY = int(os.getenv("MAX_EXECUTION_HISTORY", "100"))
 MAX_USER_HISTORY = int(os.getenv("MAX_USER_HISTORY", "100"))
 CONTEXT_STORE_BACKUP_INTERVAL = int(os.getenv("CONTEXT_STORE_BACKUP_INTERVAL", "300"))  # seconds
+SHADOW_MODE = os.getenv("SHADOW_MODE", "false").lower() == "true"
 
 # Device Configuration
 SUPPORTED_DEVICE_TYPES = [

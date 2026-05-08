@@ -6,9 +6,7 @@ import 'package:homegenie_app/features/alerts/views/alerts_view.dart';
 import 'package:homegenie_app/features/rules/views/rules_view.dart';
 import 'package:homegenie_app/features/energy/views/energy_view.dart';
 import 'package:homegenie_app/features/logs/views/logs_view.dart';
-import 'package:homegenie_app/features/dashboard/views/iot_devices_view.dart';
-import 'package:homegenie_app/features/simulation/views/simulation_view.dart';
-import 'package:homegenie_app/core/responsive/breakpoints.dart';
+import 'package:homegenie_app/features/dashboard/views/home.dart';
 import 'package:homegenie_app/features/automation/views/automation_selection_view.dart';
 import 'package:homegenie_app/features/live/views/live_hub_view.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
@@ -69,34 +67,71 @@ class _RootPageState extends State<RootPage> with WidgetsBindingObserver {
 
     final isDemo = context.select<DashboardController, bool>((c) => c.isDemoMode);
 
-    final List<Widget> pages = [
-      isDemo
-        ? DashboardPage(
+    Widget pageFor(int i) {
+      switch (i) {
+        case 0:
+          return isDemo
+              ? DashboardPage(
+                  isDark: widget.isDark,
+                  onToggleTheme: widget.onToggleTheme,
+                  navIndex: 0,
+                  onNavTap: _onNavTap,
+                )
+              : LiveHubView(
+                  isDark: widget.isDark,
+                  currentIndex: 0,
+                  onToggleTheme: widget.onToggleTheme,
+                  onNavTap: _onNavTap,
+                );
+        case 1:
+          return IoTDevicesPage(
             isDark: widget.isDark,
+            currentIndex: 1,
             onToggleTheme: widget.onToggleTheme,
-            navIndex: 0,
             onNavTap: _onNavTap,
-          )
-        : LiveHubView(
+          );
+        case 2:
+          return RulesPage(
             isDark: widget.isDark,
+            currentIndex: 2,
             onToggleTheme: widget.onToggleTheme,
-          ),
-      IoTDevicesPage(isDark: widget.isDark),
-      RulesPage(isDark: widget.isDark),
-      isDemo
-        ? SimulationPage(
-            isDark: widget.isDark,
-            navIndex: 3,
             onNavTap: _onNavTap,
-          )
-        : const AutomationSelectionView(),
-      EnergyPage(isDark: widget.isDark),
-      AlertsPage(isDark: widget.isDark),
-      LogsPage(isDark: widget.isDark),
-      ServerSettingsScreen(isDark: widget.isDark, onToggleTheme: widget.onToggleTheme),
-    ];
+          );
+        case 3:
+          return const AutomationSelectionView();
+        case 4:
+          return EnergyPage(
+            isDark: widget.isDark,
+            currentIndex: 4,
+            onToggleTheme: widget.onToggleTheme,
+            onNavTap: _onNavTap,
+          );
+        case 5:
+          return AlertsPage(
+            isDark: widget.isDark,
+            currentIndex: 5,
+            onToggleTheme: widget.onToggleTheme,
+            onNavTap: _onNavTap,
+          );
+        case 6:
+          return LogsPage(
+            isDark: widget.isDark,
+            currentIndex: 6,
+            onToggleTheme: widget.onToggleTheme,
+            onNavTap: _onNavTap,
+          );
+        case 7:
+          return ServerSettingsScreen(
+            isDark: widget.isDark,
+            currentIndex: 7,
+            onToggleTheme: widget.onToggleTheme,
+            onNavTap: _onNavTap,
+          );
+        default:
+          return const SizedBox.shrink();
+      }
+    }
 
-    // Handle Android back button: go to dashboard first, then exit
     return PopScope(
       canPop: _currentIndex == 0,
       onPopInvokedWithResult: (didPop, _) {
@@ -107,10 +142,9 @@ class _RootPageState extends State<RootPage> with WidgetsBindingObserver {
       child: Stack(
         children: [
           ResponsiveScaffold(
-            body: IndexedStack(
-              index: _currentIndex,
-              sizing: StackFit.expand,
-              children: pages,
+            body: KeyedSubtree(
+              key: ValueKey(_currentIndex),
+              child: RepaintBoundary(child: pageFor(_currentIndex)),
             ),
             currentIndex: _currentIndex,
             onNavTap: _onNavTap,
@@ -121,9 +155,7 @@ class _RootPageState extends State<RootPage> with WidgetsBindingObserver {
             right: 0,
             bottom: 0,
             child: Padding(
-              padding: EdgeInsets.only(
-                bottom: Breakpoints.of(context).isMobile ? 80 : 0,
-              ),
+              padding: const EdgeInsets.only(bottom: 24, right: 8),
               child: ChatbotOrb(isDark: widget.isDark),
             ),
           ),

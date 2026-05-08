@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'package:homegenie_app/core/theme/card_theme.dart';
 
@@ -23,7 +22,7 @@ class AppTheme {
         onPrimary: Colors.white,
         onSurface: AppColors.lightTextPrimary,
       ),
-      textTheme: GoogleFonts.spaceGroteskTextTheme(base.textTheme).apply(
+      textTheme: base.textTheme.apply(fontFamily: 'SpaceGrotesk').apply(
         bodyColor: AppColors.lightTextPrimary,
         displayColor: AppColors.lightTextPrimary,
       ),
@@ -101,7 +100,7 @@ class AppTheme {
         onPrimary: Colors.white,
         onSurface: AppColors.darkTextPrimary,
       ),
-      textTheme: GoogleFonts.spaceGroteskTextTheme(base.textTheme).apply(
+      textTheme: base.textTheme.apply(fontFamily: 'SpaceGrotesk').apply(
         bodyColor: AppColors.darkTextPrimary,
         displayColor: AppColors.darkTextPrimary,
       ),

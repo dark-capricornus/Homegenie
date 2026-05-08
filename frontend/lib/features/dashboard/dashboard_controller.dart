@@ -68,6 +68,25 @@ class DashboardController extends ChangeNotifier {
   // ETag for conditional HTTP fetches
   String? _devicesEtag;
 
+  // Cache invalidation token. Bumped whenever _rawDevices or
+  // _deviceAccessCounts changes so memoized getters know to recompute.
+  int _dataVersion = 0;
+
+  // Memoized derived collections — recomputed only when _dataVersion changes.
+  int _cachedDevicesVersion = -1;
+  List<DeviceInfo>? _cachedDevices;
+  int _cachedDevicesByRoomVersion = -1;
+  Map<String, List<DeviceInfo>>? _cachedDevicesByRoom;
+  int _cachedFrequentVersion = -1;
+  List<DeviceInfo>? _cachedFrequent;
+
+  void _invalidateDeviceCaches() {
+    _dataVersion++;
+    _cachedDevices = null;
+    _cachedDevicesByRoom = null;
+    _cachedFrequent = null;
+  }
+
   // Frequency tracking
   Map<String, int> _deviceAccessCounts = {};
   // Persistence keys
@@ -104,6 +123,10 @@ class DashboardController extends ChangeNotifier {
     _authService = AuthService(baseUrl: 'http://localhost:8081');
     return _authService!;
   }
+
+  // Update debouncing
+  Timer? _updateDebounceTimer;
+  final Map<String, dynamic> _pendingUpdates = {};
 
   Future<void> login(String username, String password) async {
     try {
@@ -188,14 +211,27 @@ class DashboardController extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   // Computed getters
   // ---------------------------------------------------------------------------
-  List<DeviceInfo> get devices => _rawDevices.entries
-      .map((e) => DeviceInfo(
-            key: e.key,
-            data: _deviceService.normalizeDeviceData(e.value),
-            name: _deviceService.formatDeviceName(e.key),
-            type: _deviceService.getDeviceType(e.key),
-          ))
-      .toList();
+  List<DeviceInfo> get devices {
+    if (_cachedDevices != null && _cachedDevicesVersion == _dataVersion) {
+      return _cachedDevices!;
+    }
+    // Canonical device list filtered for interactive devices and sorted by name
+    final filteredDevices = _rawDevices.entries.map((e) => DeviceInfo(
+      key: e.key,
+      data: _deviceService.normalizeDeviceData(e.value),
+      name: _deviceService.formatDeviceName(e.key),
+      type: _deviceService.getDeviceType(e.key),
+    )).where((d) => d.type != 'sensor').toList();
+
+    filteredDevices.sort((a, b) {
+      final nameComp = a.name.compareTo(b.name);
+      return nameComp != 0 ? nameComp : a.key.compareTo(b.key);
+    });
+
+    _cachedDevices = List.unmodifiable(filteredDevices);
+    _cachedDevicesVersion = _dataVersion;
+    return _cachedDevices!;
+  }
 
   double get totalPowerConsumption {
     double total = 0;
@@ -207,24 +243,133 @@ class DashboardController extends ChangeNotifier {
     return total;
   }
 
+  bool _aiEngineActive = true;
+  bool get aiEngineActive => _aiEngineActive;
+  void toggleAiEngine(bool value) {
+    _aiEngineActive = value;
+    logActivity('AI Engine ${value ? 'Started' : 'Stopped'}');
+    notifyListeners();
+  }
+
+  // Live Power Tracking for Sparklines.
+  //
+  // Exposed as a ValueNotifier so the sparkline widget can listen via
+  // ValueListenableBuilder and rebuild on its own — without dragging the
+  // entire DashboardController consumer tree along for every 2s tick.
+  final ValueNotifier<List<double>> powerSpotsNotifier =
+      ValueNotifier<List<double>>(const []);
+  List<double> get powerSpots => powerSpotsNotifier.value;
+  static const int _maxPowerSpots = 50;
+  Timer? _powerTimer;
+
+  final List<String> _recentActivity = [
+    'AI Planner Initiated · Queuing evening routine',
+    'Environment Updated · Temp sensor recalibrated',
+    'Rule Triggered · Hallway Welcome Rule fired',
+  ];
+  List<String> get recentActivity => _recentActivity;
+
+  void logActivity(String message) {
+    _recentActivity.insert(0, message);
+    if (_recentActivity.length > 20) _recentActivity.removeLast();
+    notifyListeners();
+  }
+
+  void clearActivity() {
+    _recentActivity.clear();
+    notifyListeners();
+  }
+
   Map<String, List<DeviceInfo>> get devicesByRoom {
+    if (_cachedDevicesByRoom != null &&
+        _cachedDevicesByRoomVersion == _dataVersion) {
+      return _cachedDevicesByRoom!;
+    }
     final map = <String, List<DeviceInfo>>{};
     for (final d in devices) {
-      final parts = d.key.split('.');
-      final room = parts.length > 1 ? parts[1] : 'Other';
-      map.putIfAbsent(room, () => []).add(d);
+      // 1. Try explicit location/room from normalized data
+      String? room = d.data['location'] ?? d.data['room'];
+
+      // 2. Fallback to parsing the key (type.location)
+      if (room == null || room.isEmpty) {
+        final parts = d.key.split('.');
+        room = parts.length > 1 ? parts[1] : 'Other';
+      }
+
+      // 3. Normalize and canonicalize room name for grouping. This merges
+      // semantically duplicate rooms (e.g. "outdoor_temp" → "outdoor",
+      // "motion_living" → "living_room") so the UI doesn't show a forest
+      // of one-device cards.
+      final key = _canonicalRoomKey(room);
+      map.putIfAbsent(key, () => []).add(d);
     }
+    
+    // Sort devices within each room by canonical key for a fully stable order
+    // that does NOT depend on mutable state (so toggling a device or polling
+    // never reorders tiles).
+    for (final list in map.values) {
+      list.sort((a, b) => a.key.compareTo(b.key));
+    }
+
+    _cachedDevicesByRoom = map;
+    _cachedDevicesByRoomVersion = _dataVersion;
     return map;
   }
 
+  static String _canonicalRoomKey(String raw) {
+    final n = raw.toLowerCase().trim().replaceAll(RegExp(r'[\s\-]+'), '_');
+
+    // Outdoor / outside cluster
+    if (n.contains('outdoor') ||
+        n.contains('outside') ||
+        n.contains('garden') ||
+        n.contains('yard') ||
+        n.contains('patio')) {
+      if (n.contains('back')) return 'backyard';
+      if (n.contains('front') && n.contains('porch')) return 'front_porch';
+      return 'outdoor';
+    }
+
+    // Entry cluster
+    if (n.contains('front') && (n.contains('entry') || n.contains('door'))) {
+      return 'front_entry';
+    }
+    if (n.contains('back') && (n.contains('entry') || n.contains('door'))) {
+      return 'back_entry';
+    }
+
+    // Living room (handles "motion_living", "livingroom", etc.)
+    if (n.contains('living')) return 'living_room';
+
+    // Bedroom / bath / kitchen / garage / hallway
+    if (n.contains('bedroom') || n == 'bed') return 'bedroom';
+    if (n.contains('bathroom') || n == 'bath') return 'bathroom';
+    if (n.contains('kitchen')) return 'kitchen';
+    if (n.contains('garage')) return 'garage';
+    if (n.contains('hall')) return 'hallway';
+    if (n.contains('office') || n.contains('study')) return 'office';
+
+    if (n.isEmpty || n == 'unknown' || n == 'other' || n == 'misc') {
+      return 'other';
+    }
+    return n;
+  }
+
   List<DeviceInfo> get frequentlyAccessedDevices {
+    if (_cachedFrequent != null && _cachedFrequentVersion == _dataVersion) {
+      return _cachedFrequent!;
+    }
     final sorted = List<DeviceInfo>.from(devices);
     sorted.sort((a, b) {
       final countA = _deviceAccessCounts[a.key] ?? 0;
       final countB = _deviceAccessCounts[b.key] ?? 0;
-      return countB.compareTo(countA);
+      final cmp = countB.compareTo(countA);
+      if (cmp != 0) return cmp;
+      return a.key.compareTo(b.key);
     });
-    return sorted.take(8).toList();
+    _cachedFrequent = List.unmodifiable(sorted.take(8).toList());
+    _cachedFrequentVersion = _dataVersion;
+    return _cachedFrequent!;
   }
 
   // ---------------------------------------------------------------------------
@@ -237,6 +382,30 @@ class DashboardController extends ChangeNotifier {
     _integrationService = IntegrationService();
     _wsService = WebSocketService();
     _wsService.stream.listen(_handleWsMessage);
+    _startPowerTracking();
+  }
+
+  void _startPowerTracking() {
+    _powerTimer?.cancel();
+    _powerTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      final next = List<double>.from(powerSpotsNotifier.value)
+        ..add(totalPowerConsumption);
+      if (next.length > _maxPowerSpots) next.removeAt(0);
+      // Update only the sparkline notifier — do NOT call notifyListeners()
+      // here, otherwise every Consumer<DashboardController> rebuilds every
+      // 2 seconds and INP suffers across the app.
+      powerSpotsNotifier.value = List.unmodifiable(next);
+    });
+  }
+
+  @override
+  void dispose() {
+    _powerTimer?.cancel();
+    _statusTimer?.cancel();
+    _wsSubscription?.cancel();
+    _wsService.dispose();
+    powerSpotsNotifier.dispose();
+    super.dispose();
   }
 
   /// Coalesce multiple state changes into a single notifyListeners() call
@@ -267,6 +436,9 @@ class DashboardController extends ChangeNotifier {
 
   Future<void> _incrementAccessCount(String deviceKey) async {
     _deviceAccessCounts[deviceKey] = (_deviceAccessCounts[deviceKey] ?? 0) + 1;
+    // Bump the data version so the frequently-accessed cache rebuilds.
+    _cachedFrequent = null;
+    _dataVersion++;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kAccessCountsKey, json.encode(_deviceAccessCounts));
@@ -418,7 +590,7 @@ class DashboardController extends ChangeNotifier {
       final topic = data['topic'] as String;
       final payload = data['payload'];
       final key = _topicToDeviceKey(topic);
-      if (!_isKnownDevice(key)) {
+      if (!_isKnownDevice(topic)) {
         if (!topic.startsWith('probes/')) {
           _log.fine('WS state_update rejected: topic=$topic key=$key');
         }
@@ -445,7 +617,7 @@ class DashboardController extends ChangeNotifier {
 
     // 3. In Demo Mode, allow "new" topics ONLY if they match device patterns
     // and are NOT system/probe messages.
-    if (_isDemoMode == true) {
+    if (isDemoMode) {
       if (topic.startsWith('probes/')) return false;
       if (topic.endsWith('/commanded')) return false;
       
@@ -465,7 +637,14 @@ class DashboardController extends ChangeNotifier {
   /// record that /devices returned (which also has device_id, type, name).
   void _mergeDeviceState(String topic, dynamic payload) {
     final String deviceId = _topicToDeviceKey(topic);
-    
+
+    // While a user-initiated toggle is in flight for this device, ignore
+    // realtime state pushes for it — the backend often re-emits the
+    // pre-toggle value before the change propagates, which would otherwise
+    // flicker derived UI (brightness slider, status label, etc.). The
+    // post-toggle fetchDevices() in toggleDevice() will reconcile state.
+    if (isToggleLoading[deviceId] ?? false) return;
+
     final Map<String, dynamic> existing = Map.from(_rawDevices[deviceId] ?? {});
     
     if (existing.containsKey('device_id')) {
@@ -485,6 +664,7 @@ class DashboardController extends ChangeNotifier {
       // No structured record yet — store the raw payload.
       _rawDevices[deviceId] = payload;
     }
+    _invalidateDeviceCaches();
   }
 
   /// Converts any topic format to the canonical dot-notation device key
@@ -590,7 +770,7 @@ class DashboardController extends ChangeNotifier {
       await _wsSubscription?.cancel();
       _wsSubscription = _wsService.connectionStateStream.listen((c) {
         wsConnected = c;
-        notifyListeners();
+        _scheduleNotify();
       });
 
       // WebSocket: connect in both modes (Live will use it for real device updates)
@@ -640,6 +820,7 @@ class DashboardController extends ChangeNotifier {
     _rawDevices = {};
     _knownDeviceKeys = {};
     deviceToggles = {};
+    _invalidateDeviceCaches();
     _devicesEtag = null;
     _wsService.disconnect();
     _statusTimer?.cancel();
@@ -667,6 +848,7 @@ class DashboardController extends ChangeNotifier {
     _rawDevices = {};
     _knownDeviceKeys = {};
     deviceToggles = {};
+    _invalidateDeviceCaches();
     _devicesEtag = null;
     
     // Refresh the auth service with the new base URL if needed
@@ -690,13 +872,13 @@ class DashboardController extends ChangeNotifier {
     _lastStatusCheck = now;
     if (baseUrl.isEmpty) {
       connectionStatus = ConnectionStatus.disconnected;
-      notifyListeners();
+      _scheduleNotify();
       return;
     }
     final ok = await ApiLocator.testUrl(baseUrl);
     connectionStatus =
         ok ? ConnectionStatus.connected : ConnectionStatus.disconnected;
-    notifyListeners();
+    _scheduleNotify();
   }
 
   Future<void> fetchDevices({int retryCount = 0}) async {
@@ -717,7 +899,7 @@ class DashboardController extends ChangeNotifier {
       if (resp.statusCode == 304) {
         _log.fine('FETCH_DEVICES: 304 Not Modified, skipping');
         isLoading = false;
-        notifyListeners();
+        _scheduleNotify();
         return;
       }
 
@@ -736,8 +918,15 @@ class DashboardController extends ChangeNotifier {
         // Build the canonical set of known device keys.
         _knownDeviceKeys = incoming.keys.toSet();
 
-        // Replace _rawDevices with the authoritative /devices payload
-        _rawDevices = Map<String, dynamic>.from(incoming);
+        // Replace _rawDevices with the authoritative /devices payload, with
+        // keys inserted in sorted order so any consumer that iterates the
+        // map directly sees a stable, deterministic device order across
+        // refreshes (independent of however the backend ordered the JSON).
+        final sortedKeys = incoming.keys.toList()..sort();
+        _rawDevices = {
+          for (final k in sortedKeys) k: incoming[k],
+        };
+        _invalidateDeviceCaches();
 
         final items = _rawDevices.length;
         _log.info('FETCH_DEVICES: success, items=$items');
@@ -764,7 +953,7 @@ class DashboardController extends ChangeNotifier {
       _log.warning('Failed to fetch devices: $e');
     } finally {
       isLoading = false;
-      notifyListeners();
+      _scheduleNotify();
     }
   }
 
@@ -894,10 +1083,13 @@ class DashboardController extends ChangeNotifier {
     return false;
   }
 
-  Future<void> sendGoal(String message) async {
-    isProcessingGoal = true;
-    statusMessage = 'AI is thinking...';
-    notifyListeners();
+  Future<void> sendGoal(String message, {bool silent = false}) async {
+    logActivity('Simulation: $message');
+    if (!silent) {
+      isProcessingGoal = true;
+      statusMessage = 'AI is thinking...';
+      notifyListeners();
+    }
     try {
       final url = await ApiLocator.getBaseUrl();
       final prefs = await SharedPreferences.getInstance();
@@ -916,10 +1108,15 @@ class DashboardController extends ChangeNotifier {
       lastGoalResult = 'Error: Connection failed';
       _log.severe('Goal error: $e');
     } finally {
-      isProcessingGoal = false;
-      notifyListeners();
-      await Future.delayed(const Duration(seconds: 2));
-      await fetchDevices();
+      if (!silent) {
+        isProcessingGoal = false;
+        notifyListeners();
+        await Future.delayed(const Duration(seconds: 2));
+        await fetchDevices();
+      } else {
+        // Silent updates just fetch once immediately to confirm
+        unawaited(fetchDevices());
+      }
     }
   }
 
@@ -948,10 +1145,53 @@ class DashboardController extends ChangeNotifier {
       _log.warning('Failed to toggle device ${device.key}: $e');
       deviceToggles[device.key] = current;
     } finally {
-      isToggleLoading[device.key] = false;
-      notifyListeners();
-      await fetchDevices();
+      // Keep isToggleLoading=true across the refresh so _syncToggle won't
+      // clobber our optimistic state with a stale server snapshot (the
+      // backend may not have propagated the change yet). Clearing it AFTER
+      // the refresh prevents the tile from flickering back to its previous
+      // state and then forward again.
+      try {
+        await fetchDevices();
+      } finally {
+        isToggleLoading[device.key] = false;
+        _scheduleNotify();
+      }
     }
+  }
+
+  Future<void> updateDeviceValue(DeviceInfo device, String attribute, dynamic value) async {
+    // 1. Optimistic update for immediate UI feedback
+    final currentRaw = _rawDevices[device.key];
+    if (currentRaw != null) {
+      final Map<String, dynamic> updated = Map.from(currentRaw);
+      final state = Map<String, dynamic>.from(updated['state'] ?? {});
+      state[attribute] = value;
+      
+      if (attribute == 'brightness' && (value as num) > 0) {
+        state['power'] = 'on';
+        state['state'] = 'on';
+      }
+      
+      updated['state'] = state;
+      _rawDevices[device.key] = updated;
+      _invalidateDeviceCaches();
+      _syncToggle(device.key, updated);
+
+      // Notify listeners immediately for local UI responsiveness
+      notifyListeners();
+    }
+
+    // 2. Debounce the backend update to prevent clogging
+    _updateDebounceTimer?.cancel();
+    _updateDebounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        if (baseUrl.isEmpty) return;
+        final command = 'Set ${attribute} of ${device.name} to ${value}';
+        await sendGoal(command, silent: true);
+      } catch (e) {
+        _log.warning('Failed to update device value: $e');
+      }
+    });
   }
 
   Future<void> fetchIntegrations() async {
@@ -982,10 +1222,4 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
-  @override
-  void dispose() {
-    _statusTimer?.cancel();
-    _wsService.dispose();
-    super.dispose();
-  }
 }

@@ -1,4 +1,3 @@
-export 'page_header.dart';
 export 'section_label.dart';
 export 'app_badge.dart';
 export 'app_surface.dart';

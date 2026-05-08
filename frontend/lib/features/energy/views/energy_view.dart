@@ -5,13 +5,24 @@ import 'package:homegenie_app/core/theme/app_theme.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
 import 'package:homegenie_app/features/live/widgets/live_mode_placeholder.dart';
 import 'package:homegenie_app/shared/widgets/shared_widgets.dart';
+import 'package:homegenie_app/core/widgets/page_header.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 
 class EnergyPage extends StatefulWidget {
   final bool isDark;
+  final VoidCallback? onToggleTheme;
+  final ValueChanged<int>? onNavTap;
 
-  const EnergyPage({super.key, required this.isDark});
+  final int currentIndex;
+
+  const EnergyPage({
+    super.key,
+    required this.isDark,
+    required this.currentIndex,
+    this.onToggleTheme,
+    this.onNavTap,
+  });
 
   @override
   State<EnergyPage> createState() => _EnergyPageState();
@@ -29,6 +40,17 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctrl = Provider.of<DashboardController>(context, listen: false);
+      final cur = ctrl.totalPowerConsumption;
+      setState(() {
+        for (var i = 0; i < 6; i++) {
+          _liveSpots.add(FlSpot(i.toDouble() * 2, cur));
+        }
+        _timeCounter = 10;
+      });
+    });
     _startLiveUpdate();
   }
 
@@ -194,10 +216,17 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
     }
 
     return Column(children: [
-      _buildHeader(context),
+      PageHeader(
+        title: 'Energy Analytics',
+        subtitle: 'Power & Consumption',
+        isDark: widget.isDark,
+        currentIndex: widget.currentIndex,
+        onToggleTheme: widget.onToggleTheme,
+        onNavTap: widget.onNavTap,
+      ),
       Expanded(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
           children: [
             // Period selector
             Container(
@@ -382,18 +411,6 @@ class _EnergyPageState extends State<EnergyPage> with WidgetsBindingObserver {
     ]);
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return PageHeader(
-      title: 'Energy Analytics',
-      isDark: widget.isDark,
-      actions: [
-        IconButton(
-            icon: Icon(Icons.share_outlined, color: _textSecondary.withValues(alpha: 0.4)),
-            onPressed: null,
-            tooltip: 'Export coming soon'),
-      ],
-    );
-  }
 }
 
 class _DeviceConsumptionRow extends StatelessWidget {

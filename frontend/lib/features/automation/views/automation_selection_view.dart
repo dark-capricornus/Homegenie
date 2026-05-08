@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'routine_builder_view.dart';
 
@@ -22,7 +21,7 @@ class AutomationSelectionView extends StatelessWidget {
                 children: [
                   Text(
                     'Connect Your Home Automation System',
-                    style: GoogleFonts.outfit(
+                    style: TextStyle(fontFamily: 'Outfit', 
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -31,7 +30,7 @@ class AutomationSelectionView extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     'Select a protocol to begin hardware integration',
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter', 
                       fontSize: 16,
                       color: Colors.white.withOpacity(0.5),
                     ),
@@ -45,7 +44,7 @@ class AutomationSelectionView extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Text(
                 'Create Automations',
-                style: GoogleFonts.outfit(
+                style: TextStyle(fontFamily: 'Outfit', 
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
@@ -71,7 +70,7 @@ class AutomationSelectionView extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
               child: Text(
                 'Hardware Protocols',
-                style: GoogleFonts.outfit(
+                style: TextStyle(fontFamily: 'Outfit', 
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: Colors.white.withOpacity(0.9),
@@ -142,7 +141,7 @@ class AutomationSelectionView extends StatelessWidget {
                         Expanded(
                           child: Text(
                             'Real-world device communication requires a local HomeGenie Gateway or a compatible bridge.',
-                            style: GoogleFonts.inter(
+                            style: TextStyle(fontFamily: 'Inter', 
                               fontSize: 13,
                               color: Colors.white.withOpacity(0.6),
                               height: 1.4,
@@ -203,7 +202,7 @@ class AutomationSelectionView extends StatelessWidget {
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.outfit(
+            style: TextStyle(fontFamily: 'Outfit', 
               fontSize: 16,
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -215,7 +214,7 @@ class AutomationSelectionView extends StatelessWidget {
               description,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
+              style: TextStyle(fontFamily: 'Inter', 
                 fontSize: 11,
                 color: Colors.white.withOpacity(0.4),
                 height: 1.3,
@@ -277,7 +276,7 @@ class AutomationSelectionView extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: GoogleFonts.outfit(
+                    style: TextStyle(fontFamily: 'Outfit', 
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -286,7 +285,7 @@ class AutomationSelectionView extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     description,
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter', 
                       fontSize: 13,
                       color: Colors.white.withOpacity(0.5),
                       height: 1.4,

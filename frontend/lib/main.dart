@@ -12,7 +12,7 @@ import 'package:homegenie_app/features/auth/views/auth_view.dart';
 final appLog = Logger('HomeGenieApp');
 
 void main() {
-  Logger.root.level = Level.ALL; 
+  Logger.root.level = Level.ALL;
   Logger.root.onRecord.listen((record) {
     if (kDebugMode) {
       // ignore: avoid_print

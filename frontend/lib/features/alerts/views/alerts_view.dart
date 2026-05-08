@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'package:homegenie_app/core/theme/app_theme.dart';
 import 'package:homegenie_app/shared/widgets/shared_widgets.dart';
+import 'package:homegenie_app/core/widgets/page_header.dart';
 
 // ── MODEL ─────────────────────────────────────────────────────────
 enum AlertType { critical, routine, update, camera }
@@ -27,6 +28,8 @@ class AlertItem {
 }
 
 // ── MOCK DATA ─────────────────────────────────────────────────────
+List<AlertItem> mockAlerts() => _mockAlerts();
+
 List<AlertItem> _mockAlerts() => [
       AlertItem(
         title: 'Gas Leak Detected!',
@@ -135,8 +138,18 @@ Color alertIconColor(AlertType t) {
 // ── PAGE ─────────────────────────────────────────────────────────
 class AlertsPage extends StatefulWidget {
   final bool isDark;
+  final VoidCallback? onToggleTheme;
+  final ValueChanged<int>? onNavTap;
 
-  const AlertsPage({super.key, required this.isDark});
+  final int currentIndex;
+
+  const AlertsPage({
+    super.key,
+    required this.isDark,
+    required this.currentIndex,
+    this.onToggleTheme,
+    this.onNavTap,
+  });
 
   @override
   State<AlertsPage> createState() => _AlertsPageState();
@@ -178,7 +191,14 @@ class _AlertsPageState extends State<AlertsPage>
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-      _buildHeader(context),
+      PageHeader(
+        title: 'Alerts',
+        subtitle: 'Notification Center',
+        isDark: widget.isDark,
+        currentIndex: widget.currentIndex,
+        onToggleTheme: widget.onToggleTheme,
+        onNavTap: widget.onNavTap,
+      ),
       Container(
         color: _surface,
         child: TabBar(
@@ -281,18 +301,6 @@ class _AlertsPageState extends State<AlertsPage>
     ]);
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return PageHeader(
-      title: 'Notification Center',
-      isDark: widget.isDark,
-      actions: [
-        IconButton(
-            icon: Icon(Icons.settings_outlined, color: _textSecondary.withValues(alpha: 0.4)),
-            onPressed: null,
-            tooltip: 'Alert settings coming soon'),
-      ],
-    );
-  }
 }
 
 // ── Public-named helpers (DDC can resolve their static references) ─

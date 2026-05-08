@@ -56,9 +56,15 @@ class WebSocketService {
     // If we're stuck on localhost but it's failing, try to rediscover fresh 
     // to see if the network/server is back.
     if (resolved.contains('localhost') && baseUrl == null) {
-      final fresh = await ApiLocator.getBaseUrl();
-      if (!fresh.contains('localhost')) {
-        resolved = fresh;
+      try {
+        final String fresh = await ApiLocator.getBaseUrl();
+        // Use a more resilient check to avoid DDC/JS prototype issues
+        if (fresh.toLowerCase().contains('localhost') == false) {
+          _log.info('WebSocket: Redirecting from localhost to discovered URL: $fresh');
+          resolved = fresh;
+        }
+      } catch (e) {
+        _log.warning('WebSocket: Discovery fallback failed: $e');
       }
     }
     

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:homegenie_app/core/models/integration.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
@@ -61,7 +60,7 @@ class _PlatformSetupViewState extends State<PlatformSetupView> {
         ),
         title: Text(
           p.name,
-          style: GoogleFonts.outfit(
+          style: TextStyle(fontFamily: 'Outfit', 
             fontWeight: FontWeight.bold,
             color: isDark ? Colors.white : Colors.black87,
           ),
@@ -116,7 +115,7 @@ class _PlatformSetupViewState extends State<PlatformSetupView> {
               children: [
                 Text(
                   p.name,
-                  style: GoogleFonts.outfit(
+                  style: TextStyle(fontFamily: 'Outfit', 
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: isDark ? Colors.white : Colors.black87,
@@ -125,7 +124,7 @@ class _PlatformSetupViewState extends State<PlatformSetupView> {
                 const SizedBox(height: 4),
                 Text(
                   p.description,
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter', 
                     fontSize: 13,
                     color: isDark ? Colors.white54 : Colors.black54,
                     height: 1.4,
@@ -159,7 +158,7 @@ class _PlatformSetupViewState extends State<PlatformSetupView> {
           const SizedBox(height: 16),
           Text(
             'Coming Soon',
-            style: GoogleFonts.outfit(
+            style: TextStyle(fontFamily: 'Outfit', 
               fontSize: 24,
               fontWeight: FontWeight.bold,
               color: isDark ? Colors.white : Colors.black87,
@@ -169,7 +168,7 @@ class _PlatformSetupViewState extends State<PlatformSetupView> {
           Text(
             _comingSoonDescription(p.id),
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
+            style: TextStyle(fontFamily: 'Inter', 
               fontSize: 14,
               color: isDark ? Colors.white54 : Colors.black54,
               height: 1.5,
@@ -189,7 +188,7 @@ class _PlatformSetupViewState extends State<PlatformSetupView> {
                 Expanded(
                   child: Text(
                     _comingSoonRequirements(p.id),
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter', 
                       fontSize: 12,
                       color: isDark ? Colors.white60 : Colors.black54,
                       height: 1.4,
@@ -212,7 +211,7 @@ class _PlatformSetupViewState extends State<PlatformSetupView> {
         children: [
           Text(
             'Configuration',
-            style: GoogleFonts.outfit(
+            style: TextStyle(fontFamily: 'Outfit', 
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: isDark ? Colors.white : Colors.black87,
@@ -247,7 +246,7 @@ class _PlatformSetupViewState extends State<PlatformSetupView> {
                     )
                   : Text(
                       p.isConfigured ? 'Update Configuration' : 'Save & Connect',
-                      style: GoogleFonts.inter(
+                      style: TextStyle(fontFamily: 'Inter', 
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
@@ -263,16 +262,16 @@ class _PlatformSetupViewState extends State<PlatformSetupView> {
     return TextFormField(
       controller: _controllers[field.key],
       obscureText: field.isPassword,
-      style: GoogleFonts.inter(
+      style: TextStyle(fontFamily: 'Inter', 
         color: isDark ? Colors.white : Colors.black87,
       ),
       decoration: InputDecoration(
         labelText: field.label,
         hintText: field.hint,
-        labelStyle: GoogleFonts.inter(
+        labelStyle: TextStyle(fontFamily: 'Inter', 
           color: isDark ? Colors.white54 : Colors.black45,
         ),
-        hintStyle: GoogleFonts.inter(
+        hintStyle: TextStyle(fontFamily: 'Inter', 
           color: isDark ? Colors.white24 : Colors.black26,
         ),
         filled: true,

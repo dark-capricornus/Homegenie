@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
@@ -38,7 +37,7 @@ class _RoutineBuilderViewState extends State<RoutineBuilderView> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text('New Routine',
-            style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+            style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold)),
         actions: [
           TextButton(
             onPressed: () => _saveRoutine(ctrl),
@@ -190,7 +189,7 @@ class _RoutineBuilderViewState extends State<RoutineBuilderView> {
         const SizedBox(width: 12),
         Text(
           title,
-          style: GoogleFonts.outfit(
+          style: TextStyle(fontFamily: 'Outfit', 
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Colors.white,

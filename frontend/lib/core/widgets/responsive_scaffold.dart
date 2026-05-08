@@ -2,13 +2,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:homegenie_app/core/responsive/breakpoints.dart';
 import 'package:homegenie_app/core/navigation/app_bottom_nav.dart';
-import 'package:homegenie_app/core/navigation/app_sidebar.dart';
 import 'package:homegenie_app/core/theme/app_colors.dart';
 import 'package:provider/provider.dart';
 import 'package:homegenie_app/features/dashboard/dashboard_controller.dart';
 import 'package:logging/logging.dart';
 
 final _log = Logger('ResponsiveScaffold');
+
+/// Bottom clearance applied to page content so the floating nav dock and
+/// chatbot orb do not occlude the last items in scrollable views.
+const double kFloatingUiClearance = 48;
 
 class ResponsiveScaffold extends StatefulWidget {
   final Widget body;
@@ -33,28 +36,26 @@ class ResponsiveScaffold extends StatefulWidget {
 }
 
 class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
-  bool _isCollapsed = true;
-
-  void _toggleSidebar() {
-    setState(() {
-      _isCollapsed = !_isCollapsed;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     if (kDebugMode) {
-       _log.fine('SCAFFOLD_BUILD: isCollapsed=$_isCollapsed, index=${widget.currentIndex}');
+      _log.fine('SCAFFOLD_BUILD: index=${widget.currentIndex}');
     }
-    final isDemoMode = context.select<DashboardController, bool>((c) => c.isDemoMode);
+    final isDemoMode =
+        context.select<DashboardController, bool>((c) => c.isDemoMode);
+
+    final bg = widget.isDark
+        ? AppColors.darkBackground
+        : AppColors.lightBackground;
 
     return ResponsiveBuilder(
       builder: (context, size) {
+        final paddedBody = _PaddedBody(child: widget.body);
+
         if (size.isMobile) {
           return Scaffold(
-            backgroundColor:
-                widget.isDark ? AppColors.darkBackground : AppColors.lightBackground,
-            body: SafeArea(child: widget.body),
+            backgroundColor: bg,
+            body: SafeArea(child: paddedBody),
             bottomNavigationBar: AppBottomNav(
               currentIndex: widget.currentIndex,
               onTap: widget.onNavTap,
@@ -67,75 +68,32 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
 
         // Desktop / Web Layout
         return Scaffold(
-          backgroundColor:
-              widget.isDark ? AppColors.darkBackground : AppColors.lightBackground,
-          body: Stack(
-            children: [
-              // Main Content (Background)
-              Positioned.fill(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Gap for collapsed sidebar
-                    const SizedBox(width: 80),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          if (!_isCollapsed) {
-                            setState(() => _isCollapsed = true);
-                          }
-                        },
-                        behavior: HitTestBehavior.opaque,
-                        child: SizedBox.expand(child: widget.body),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Sidebar (Foreground)
-              Positioned(
-                top: 0,
-                left: 0,
-                bottom: 0,
-                child: AppSidebar(
-                  currentIndex: widget.currentIndex,
-                  onToggle: _toggleSidebar,
-                  onTap: (idx) {
-                    widget.onNavTap(idx);
-                    if (!_isCollapsed) setState(() => _isCollapsed = true);
-                  },
-                  isDark: widget.isDark,
-                  isCollapsed: _isCollapsed,
-                  isDemoMode: isDemoMode,
-                ),
-              ),
-
-              if (widget.floatingActionButton != null)
-                Positioned(
-                  right: 32,
-                  bottom: 32,
-                  child: widget.floatingActionButton!,
-                ),
-
-              // DEBUG OVERLAY
-              if (kDebugMode)
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    color: Colors.red.withValues(alpha: 0.7),
-                    child: Text(
-                      'Width: ${MediaQuery.sizeOf(context).width.toInt()} | Size: ${size.name}',
-                      style: const TextStyle(color: Colors.white, fontSize: 10),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          backgroundColor: bg,
+          body: paddedBody,
+          floatingActionButton: widget.floatingActionButton,
         );
       },
+    );
+  }
+}
+
+/// Injects bottom padding into MediaQuery so any descendant scrollable that
+/// honors viewPadding (CustomScrollView, ListView, etc.) clears the floating
+/// nav dock and chatbot orb without per-page tweaks.
+class _PaddedBody extends StatelessWidget {
+  final Widget child;
+  const _PaddedBody({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return MediaQuery(
+      data: mq.copyWith(
+        padding: mq.padding.copyWith(
+          bottom: mq.padding.bottom + kFloatingUiClearance,
+        ),
+      ),
+      child: child,
     );
   }
 }

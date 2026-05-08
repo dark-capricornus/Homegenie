@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 import httpx
+from src.agents.shadow_security_agent import ShadowSecurityAgent
 
 try:
     import paho.mqtt.client as mqtt
@@ -42,7 +43,8 @@ class ExecutorAgent:
         broker_port: int = 1883,
         client_id: Optional[str] = None,
         base_topic: str = "home",
-        context_store=None  # For two-phase state reconciliation
+        context_store=None,  # For two-phase state reconciliation
+        shadow_mode: bool = False
     ):
         """
         Initialize the ExecutorAgent.
@@ -59,6 +61,8 @@ class ExecutorAgent:
         self.base_topic = base_topic
         self.client_id = client_id or f"executor_agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         self.context_store = context_store  # For two-phase state
+        self.shadow_mode = shadow_mode
+        self.shadow_agent = ShadowSecurityAgent(context_store) if context_store else None
         
         self._client: Optional[mqtt.Client] = None
         self._connected = False
@@ -90,7 +94,7 @@ class ExecutorAgent:
     def _on_connect(self, client, userdata, flags, rc):
         """Callback for when the client receives a CONNACK response from the server."""
         if rc == 0:
-            logger.info(f"✅ ExecutorAgent connected to MQTT broker at {self.broker_host}:{self.broker_port}")
+            logger.info(f"DONE: ExecutorAgent connected to MQTT broker at {self.broker_host}:{self.broker_port}")
             self._connected = True
         else:
             logger.error(f"❌ ExecutorAgent failed to connect, return code {rc}")
@@ -146,7 +150,7 @@ class ExecutorAgent:
                     logger.error("❌ Failed to connect within timeout")
                     return False
                 
-                logger.info("✅ ExecutorAgent connected successfully")
+                logger.info("DONE: ExecutorAgent connected successfully")
                 return True
                 
             except Exception as e:
@@ -252,15 +256,7 @@ class ExecutorAgent:
         return command
     
     async def execute(self, task: Dict[str, Any]) -> bool:
-        """
-        Execute a device control task via configured protocol (MQTT or HTTP).
-        
-        Args:
-            task (Dict[str, Any]): Task specification with device, action, and parameters
-            
-        Returns:
-            bool: True if command was dispatched successfully, False otherwise
-        """
+        print(f"DEBUG ExecutorAgent({id(self)}): execute called for {task.get('device')}")
         device_id = task.get("device", "")
         action = task.get("action", "")
         value = task.get("value")
@@ -279,7 +275,21 @@ class ExecutorAgent:
                 logger.debug(f"📝 Commanded state written for {device_id}: {action}={value} (pending)")
             except Exception as e:
                 logger.error(f"Failed to write commanded state: {e}")
+        
+        # SHADOW SECURITY EVALUATION
+        if self.shadow_agent:
+            safety_report = await self.shadow_agent.evaluate_task(task)
+            if not safety_report["safe"]:
+                logger.warning(f"SHIELD: Shadow Security blocked execution of unsafe task in Shadow Mode: {task}")
+                if self.shadow_mode:
+                    logger.info("SHIELD: Shadow Mode active: Command suppression successful.")
+                    return True # Return true as 'handled' but not executed
             
+        # If shadow mode is ON, we stop here (Ghost state is already updated by shadow_agent)
+        if self.shadow_mode:
+            logger.info(f"GHOST: Shadow Mode active: Skipping physical execution for {device_id}")
+            return True
+
         # Look up device config or fallback
         device_config = self.devices.get(device_id)
         if not device_config:

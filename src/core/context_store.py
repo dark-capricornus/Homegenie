@@ -28,9 +28,11 @@ class ContextStore:
     def __init__(self):
         """Initialize the ContextStore with empty state and locks."""
         self._states: Dict[str, Any] = {}
+        self._ghost_states: Dict[str, Any] = {}  # For predictive AI shadowing
         self._lock = threading.Lock()  # For thread safety
         self._async_lock = asyncio.Lock()  # For asyncio safety
         self._last_updated: Dict[str, datetime] = {}
+        self._ghost_last_updated: Dict[str, datetime] = {}
         self._subscribers = []  # List of callbacks: (topic, payload) -> None
 
     def subscribe(self, callback):
@@ -144,6 +146,35 @@ class ContextStore:
             "timeout_at": (now + timedelta(seconds=timeout_seconds)).isoformat()
         }
         await self.async_update_state(key, payload)
+
+    async def async_update_ghost_state(self, topic: str, payload: Any) -> None:
+        """
+        Update the ghost state for a given topic (Predictive Shadowing).
+        
+        Args:
+            topic (str): The device topic/identifier
+            payload (Any): The ghost state payload to store
+        """
+        print(f"DEBUG ContextStore({id(self)}): Updating ghost state for {topic}")
+        async with self._async_lock:
+            self._ghost_states[topic] = payload
+            self._ghost_last_updated[topic] = datetime.now(timezone.utc)
+        # Notify subscribers with a 'ghost/' prefix to distinguish from real state
+        self._notify(f"ghost/{topic}", payload)
+
+    async def async_get_ghost_state(self, topic: str) -> Optional[Any]:
+        """
+        Get the current ghost state for a given topic.
+        
+        Args:
+            topic (str): The device topic/identifier
+            
+        Returns:
+            Optional[Any]: The ghost state or None
+        """
+        print(f"DEBUG ContextStore({id(self)}): Getting ghost state for {topic}")
+        async with self._async_lock:
+            return self._ghost_states.get(topic)
     
     async def async_update_observed_state(self, device_id: str, state: Dict[str, Any]) -> None:
         """
